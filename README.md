@@ -67,6 +67,22 @@ When I teach containers, one challenge is to present image building in an intuit
 
 The tests do not need Docker: `dotnet test`.
 
+## Try the sample
+
+The folder [samples/busybox-basics](samples/busybox-basics) holds a small `FROM busybox` image that shows all three kinds of change: added, changed and deleted.
+
+1. With the tool running, build the sample from the folder of this repository. It makes an image called `busybox-demo`:
+
+   ```bash
+   docker build -t busybox-demo samples/busybox-basics
+   ```
+
+2. In the tool, pick `busybox-demo` and choose **Explore**.
+3. Look at the `/src` folder:
+   - `Hello1.txt` is added in layer 3 (A) and changed in layer 4 (M). Click the M cell: the layer stores the whole new file, and the old version is still stored in layer 3.
+   - `Hello2.txt` is added in layer 3 and deleted in layer 5 (D). Click the D cell: the file is only hidden by a whiteout marker. Its data is still in layer 3, so the image did not get smaller.
+4. Edit the `Dockerfile`, for example add another `COPY` line, and run the same `docker build` command again. Keep the page open and it updates by itself, with a NEW badge on the new layer.
+
 ## What was tested
 
 I test the tool on Windows with Docker Desktop. The unit tests also run on Linux in GitHub Actions. The tool can also talk to Docker through a Unix socket, but I have not tried Linux or macOS, so I do not claim that they work.
