@@ -5,8 +5,7 @@
 
 Container Layer Explorer is a local web tool for exploring Docker and OCI image layers. It shows which files each layer of a container image adds, changes or deletes, as a matrix of file paths and layers, and it updates automatically when you rebuild the image.
 
-<!-- TODO (CLE-12): take this screenshot before the README is pushed: the matrix of an image with a few layers, one deleted cell and the NEW badge visible. -->
-![The layer matrix: file paths as rows, one column per layer](docs/images/matrix.png)
+![The layer matrix of a small image: one column per layer, one row per path, with added and deleted cells and a Result column](docs/images/matrix.png)
 
 ## Why I built it
 
@@ -53,6 +52,8 @@ When I teach containers, one challenge is to present image building in an intuit
    ```
 
 4. In the tool, pick `demo` and choose **Explore**. You see one layer with one file.
+
+   ![The start page: Docker status and the list of local images](docs/images/start-page.png)
 
 5. Add a line to the Dockerfile and build again:
 

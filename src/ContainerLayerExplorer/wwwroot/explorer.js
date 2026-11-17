@@ -13,10 +13,6 @@ const ALWAYS_COLLAPSE = new Set(["/proc", "/sys", "/dev", "/usr/share/doc", "/va
 const MAX_ROWS = 3000;
 const MAX_INDENT_LEVELS = 8;   // deeper folders are indented no further, so a deep tree does not run off the screen
 
-// What a Docker image reference may look like. The name comes from the address, so it is only put into the
-// example commands (which people copy and run) when it cannot contain anything a shell would act on.
-const SAFE_IMAGE_NAME = /^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/;
-
 const state = {
   name: new URLSearchParams(location.search).get("image"),
   current: null,            // { id, name, model }
@@ -39,34 +35,20 @@ async function init() {
   }
   document.title = `${state.name} - Container Layer Explorer`;
   $("image-name").textContent = state.name;
-  fillCommands(state.name);
   $("refresh").addEventListener("click", () => refresh(true));
   $("filter").addEventListener("input", (e) => {
     state.filter = e.target.value.trim();
     if (state.current) renderMatrix();
   });
   $("panel-close").addEventListener("click", closePanel);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
-  document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => copy(b)));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    closePanel();
+    document.querySelector("details.help").open = false;   // Escape also closes the Help window
+  });
   await refresh(false);
   const refreshSoon = debounce(() => refresh(false), 400);
   listenToDocker(() => refreshSoon(), setLive);
-}
-
-/** Puts the image name into the example commands in the Commands help. */
-function fillCommands(name) {
-  if (!SAFE_IMAGE_NAME.test(name)) return;
-  const file = name.replace(/[^A-Za-z0-9._-]+/g, "-");
-  const commands = {
-    build: `docker build -t ${name} .`,
-    history: `docker history ${name}`,
-    run: `docker run --rm -it ${name} sh`,
-    save: `docker image save ${name} -o ${file}.tar`,
-  };
-  for (const [key, text] of Object.entries(commands)) {
-    const code = document.querySelector(`[data-cmd="${key}"]`);
-    if (code) code.textContent = text;
-  }
 }
 
 /** Asks the server what Docker has, and loads the image when it is new or changed (or when force is true). */
@@ -556,14 +538,6 @@ function cmp(a, b) {
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;
-}
-
-async function copy(button) {
-  try {
-    await navigator.clipboard.writeText(button.previousElementSibling.textContent);
-    button.textContent = "Copied";
-    setTimeout(() => (button.textContent = "Copy"), 1200);
-  } catch { /* clipboard blocked: the text is visible anyway */ }
 }
 
 try {

@@ -46,8 +46,10 @@ button { cursor: pointer; }
 .site-footer a { color: inherit; }
 .site-footer .trademark { font-size: 12px; }
 .help-body { position: absolute; right: 0; top: 2.2em; width: 30em; max-width: 90vw; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
-.cmd { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin: 6px 0; }
-.legend .c { display: inline-block; min-width: 1.6em; text-align: center; border-radius: 4px; margin-left: 10px; }
+.legend { list-style: none; padding: 0; margin: 8px 0; }
+.legend li { margin: 6px 0; }
+.legend .c, .legend .badge, .legend .tick { display: inline-block; min-width: 1.8em; text-align: center; border-radius: 4px; margin: 0 8px 0 0; }
+.legend .badge { min-width: 3em; }
 
 main { padding: 12px 16px 40px; }
 .message { font-size: 20px; padding: 12px 16px; border-radius: 8px; background: var(--head); }

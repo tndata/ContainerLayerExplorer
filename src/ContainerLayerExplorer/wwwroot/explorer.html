@@ -15,18 +15,17 @@
     <span id="live" class="live" title="Rebuilds of this image show up automatically">live</span>
     <input id="filter" type="search" placeholder="Filter paths" aria-label="Filter paths">
     <details class="help">
-      <summary>Commands</summary>
+      <summary>Help</summary>
       <div class="help-body">
-        <p>Build, then look here. The page follows this image tag and updates by itself.</p>
-        <div class="cmd"><code data-cmd="build">docker build -t demo .</code><button type="button" class="copy">Copy</button></div>
-        <div class="cmd"><code data-cmd="history">docker history demo</code><button type="button" class="copy">Copy</button></div>
-        <div class="cmd"><code data-cmd="run">docker run --rm -it demo sh</code><button type="button" class="copy">Copy</button></div>
-        <div class="cmd"><code data-cmd="save">docker image save demo -o demo.tar</code><button type="button" class="copy">Copy</button></div>
-        <p class="legend">
-          <span class="c Added">A</span> added
-          <span class="c Modified">M</span> changed (whole file stored again)
-          <span class="c Deleted">D</span> deleted (hidden by a whiteout marker)
-        </p>
+        <p>Each column is a layer, and each row is a path. Click a cell to see the file, or a column header to see the layer. The page follows this image tag and updates by itself when you rebuild.</p>
+        <ul class="legend">
+          <li><span class="c Added">A</span> added</li>
+          <li><span class="c Modified">M</span> changed (whole file stored again)</li>
+          <li><span class="c Deleted">D</span> deleted (hidden by a whiteout marker)</li>
+          <li><span class="tick">&#10003;</span> in the Result column: the container gets this file</li>
+          <li><span class="badge new">new</span> after a rebuild, a layer that was not in the build before (layers from the build cache get no badge)</li>
+        </ul>
+        <p><a href="https://github.com/tndata/ContainerLayerExplorer" target="_blank" rel="noopener">Documentation and issues on GitHub</a></p>
       </div>
     </details>
   </header>
