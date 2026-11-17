@@ -1,90 +1,147 @@
-// Container Layer Explorer page. Talks only to /api (see Api/Endpoints.cs). No framework.
-// Loaded as a module (index.html), so it is strict already and can use top-level await.
+// Container Layer Explorer: the explorer page. It shows one image, the tag in the address (explorer.html?image=name),
+// and follows rebuilds of it. Talks only to /api (see Api/Endpoints.cs). No framework.
+// Loaded as a module (explorer.html), so it is strict already and can use top-level await.
+import { $, debounce, esc, fmtSize, getJson, hideMessage, listenToDocker, setLive, shortId, showMessage, writeSetting } from "./common.js";
 
-// Collapse rules (ADR 0004). A folder starts collapsed when it has more than COLLAPSE_OVER changed
-// paths below it, is in ALWAYS_COLLAPSE, or only the first (base) layer touches it.
+// Collapse rules (ADR 0004, changed in CLE-19). A folder starts collapsed when it sits directly under /, has more
+// than COLLAPSE_OVER changed paths below it, is in ALWAYS_COLLAPSE, or only the first (base) layer touches it.
+// Two exceptions stay open: the working directory (WORKDIR) and the folders on the way to it, and every folder of an
+// image with SMALL_IMAGE paths or fewer in total.
 const COLLAPSE_OVER = 20;
+const SMALL_IMAGE = 20;
 const ALWAYS_COLLAPSE = new Set(["/proc", "/sys", "/dev", "/usr/share/doc", "/var/cache", "/usr/lib", "/lib"]);
-const NEVER_COLLAPSE = ["/app", "/home", "/src", "/root"];
 const MAX_ROWS = 3000;
+const MAX_INDENT_LEVELS = 8;   // deeper folders are indented no further, so a deep tree does not run off the screen
+
+// What a Docker image reference may look like. The name comes from the address, so it is only put into the
+// example commands (which people copy and run) when it cannot contain anything a shell would act on.
+const SAFE_IMAGE_NAME = /^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/;
 
 const state = {
-  images: [],
-  name: readSetting("image"),
+  name: new URLSearchParams(location.search).get("image"),
   current: null,            // { id, name, model }
   previous: new Map(),      // image name -> diff IDs of the build shown before (for the NEW badges)
   open: new Map(),          // folder path -> true (expanded) / false (collapsed), overrides the rules
   filter: "",
   selected: null,           // { path, layer }
   rows: null, tree: null,
+  problem: null,            // a message about Docker or the server, shown in red until it is gone
+  gone: false,              // the tag was removed or untagged; the last build seen stays on screen
+  loading: false,
 };
-
-const $ = (id) => document.getElementById(id);
 
 // ---------- startup and live updates ----------
 
 async function init() {
-  $("image-select").addEventListener("change", (e) => selectImage(e.target.value));
+  if (!state.name) {
+    showMessage("No image was chosen.", { backLink: true });
+    return;
+  }
+  document.title = `${state.name} - Container Layer Explorer`;
+  $("image-name").textContent = state.name;
+  fillCommands(state.name);
   $("refresh").addEventListener("click", () => refresh(true));
-  $("filter").addEventListener("input", (e) => { state.filter = e.target.value.trim(); renderMatrix(); });
+  $("filter").addEventListener("input", (e) => {
+    state.filter = e.target.value.trim();
+    if (state.current) renderMatrix();
+  });
   $("panel-close").addEventListener("click", closePanel);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
   document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => copy(b)));
   await refresh(false);
-  listen();
+  const refreshSoon = debounce(() => refresh(false), 400);
+  listenToDocker(() => refreshSoon(), setLive);
 }
 
+/** Puts the image name into the example commands in the Commands help. */
+function fillCommands(name) {
+  if (!SAFE_IMAGE_NAME.test(name)) return;
+  const file = name.replace(/[^A-Za-z0-9._-]+/g, "-");
+  const commands = {
+    build: `docker build -t ${name} .`,
+    history: `docker history ${name}`,
+    run: `docker run --rm -it ${name} sh`,
+    save: `docker image save ${name} -o ${file}.tar`,
+  };
+  for (const [key, text] of Object.entries(commands)) {
+    const code = document.querySelector(`[data-cmd="${key}"]`);
+    if (code) code.textContent = text;
+  }
+}
+
+/** Asks the server what Docker has, and loads the image when it is new or changed (or when force is true). */
 async function refresh(force) {
-  const status = await getJson("/api/status");
-  if (!status?.connected) {
-    showMessage(status?.error ?? "Cannot reach the Container Layer Explorer server.", true);
+  let images;
+  try {
+    const status = await getJson("/api/status");
+    if (!status.connected) { setProblem(status.error); return; }
+    images = await getJson("/api/images");
+  } catch (e) {
+    setProblem(e.message);
     return;
   }
-  state.images = (await getJson("/api/images")) ?? [];
-  renderPicker();
-  const tags = state.images.flatMap((i) => i.tags);
-  if (!state.name || !tags.includes(state.name)) state.name = tags.includes("demo:latest") ? "demo:latest" : tags[0];
-  if (!state.name) { showMessage("No tagged images yet. Build one: docker build -t demo ."); return; }
-  $("image-select").value = state.name;
-  const id = state.images.find((i) => i.tags.includes(state.name))?.id;
-  if (force || !state.current || state.current.id !== id || state.current.name !== state.name) await selectImage(state.name);
+  state.problem = null;
+  const found = images.find((i) => i.tags.includes(state.name));
+  state.gone = !found;
+  if (!found) {
+    updateMessage();
+    return;
+  }
+  if (force || !state.current || state.current.id !== found.id) await selectImage();
+  else updateMessage();
 }
 
-function listen() {
-  let timer;
-  const source = new EventSource("/api/events");
-  source.addEventListener("image", (e) => {
-    const action = JSON.parse(e.data).action;
-    if (action === "disconnected") { $("live").classList.remove("on"); return; }   // Docker went away; the server keeps trying
-    $("live").classList.add("on");
-    if (action === "connected") return;
-    clearTimeout(timer);                       // a build fires several events; react once
-    timer = setTimeout(() => refresh(false), 400);
-  });
-  source.onerror = () => $("live").classList.remove("on");   // EventSource reconnects by itself
+function setProblem(message) {
+  state.problem = message;
+  updateMessage();
 }
 
-async function selectImage(name) {
-  state.name = name;
-  writeSetting("image", name);
-  showMessage(`Loading ${name} ...`);
-  const result = await getJson(`/api/image?name=${encodeURIComponent(name)}`);
-  if (!result) { showMessage(`Could not load ${name}.`, true); return; }
+/** One place decides what the message bar says, from what is true now. */
+function updateMessage() {
+  if (state.problem) { showMessage(state.problem, { error: true }); return; }
+  if (state.gone && !state.current) { showMessage(`There is no image tagged ${state.name}.`, { error: true, backLink: true }); return; }
+  if (state.gone) { showMessage(`${state.name} no longer exists (removed or untagged). This is the last build seen.`, { backLink: true }); return; }
+  if (state.loading) { showMessage(`Loading ${state.name} ...`); return; }
+  if (state.current?.model.layers.length === 0) { showMessage("This image is empty (it has no layers)."); return; }
+  hideMessage();
+}
+
+async function selectImage() {
+  state.loading = true;
+  updateMessage();
+  let result;
+  try {
+    result = await getJson(`/api/image?name=${encodeURIComponent(state.name)}`);
+  } catch (e) {
+    state.loading = false;
+    setProblem(e.message);
+    return;
+  }
+  state.loading = false;
 
   const before = state.current;
-  if (before && before.name === name && before.id !== result.id) {
-    state.previous.set(name, before.model.layers.map((l) => l.diffId));
+  if (before && before.id !== result.id) {
+    state.previous.set(state.name, before.model.layers.map((l) => l.diffId));
   }
   if (!before || before.id !== result.id) state.selected = null;
   state.current = result;
+  writeSetting("image", state.name);
   state.rows = buildRows(result.model);
   state.tree = buildTree(state.rows);
-  hideMessage();
+  state.problem = null;
+  updateMessage();
   render();
-  if (state.selected?.layer === "result") {
-    const sees = state.rows.get(state.selected.path)?.sees;
-    if (sees) await showCell(state.selected.path, sees.layer, true); else closePanel();
-  } else if (state.selected) await showCell(state.selected.path, state.selected.layer);
+  await reopenSelected();
+}
+
+/** After a reload, show the same cell again when it is still there. */
+async function reopenSelected() {
+  if (!state.selected) return;
+  const { path, layer } = state.selected;
+  if (layer !== "result") { await showCell(path, layer); return; }
+  const sees = state.rows.get(path)?.sees;
+  if (sees) await showCell(path, sees.layer, true);
+  else closePanel();
 }
 
 // ---------- data shaping ----------
@@ -112,9 +169,10 @@ function buildRows(model) {
 
 /** Folder tree over the rows, with the number of rows below each folder. */
 function buildTree(rows) {
-  const root = { path: "/", children: new Map(), count: 0 };
+  const root = { path: "/", children: new Map(), count: 0, total: 0 };
   for (const row of rows.values()) {
     if (row.hidden) continue;
+    root.total++;
     const parts = row.path.split("/").slice(1);
     let node = root, path = "";
     parts.forEach((part, i) => {
@@ -131,11 +189,23 @@ function buildTree(rows) {
 
 function isOpen(node) {
   if (state.open.has(node.path)) return state.open.get(node.path);
-  if (NEVER_COLLAPSE.some((p) => node.path === p || node.path.startsWith(p + "/"))) return true;
-  if (state.current.model.config.workingDir === node.path) return true;
+  if (state.tree.total <= SMALL_IMAGE) return true;
+  if (isOnWayToWorkingDir(node.path)) return true;
+  if (isTopLevel(node.path)) return false;
   if (ALWAYS_COLLAPSE.has(node.path)) return false;
   if (onlyBaseLayer(node)) return false;
   return node.count <= COLLAPSE_OVER;
+}
+
+/** A folder directly under / such as /usr or /app. */
+function isTopLevel(path) {
+  return path.lastIndexOf("/") === 0;
+}
+
+/** The working directory (WORKDIR) is where your own files are, so it and its parents start open. */
+function isOnWayToWorkingDir(path) {
+  const workingDir = state.current.model.config.workingDir;
+  return !!workingDir && (workingDir === path || workingDir.startsWith(path + "/"));
 }
 
 /** True when nothing below this folder changes after the first layer (typically the base image).
@@ -182,16 +252,7 @@ function render() {
   const { model } = state.current;
   $("summary").hidden = false;
   renderSizes(model);
-  renderSteps(model);
   renderMatrix();
-}
-
-function renderPicker() {
-  const select = $("image-select");
-  select.innerHTML = "";
-  for (const img of state.images) {
-    for (const tag of img.tags) select.add(new Option(tag, tag));
-  }
 }
 
 function renderSizes(model) {
@@ -204,32 +265,13 @@ function renderSizes(model) {
     (model.truncated ? ` <span class="hidden-size">Too many files: only the first part is shown.</span>` : "");
 }
 
-function renderSteps(model) {
-  const ol = $("steps");
-  ol.innerHTML = "";
-  for (const step of model.history) {
-    const li = document.createElement("li");
-    li.title = step.createdBy;
-    if (step.layerIndex === null) {
-      li.className = "empty";
-      li.textContent = `${shortCmd(step.createdBy)} (no layer)`;
-    } else {
-      li.innerHTML = `<span class="num">${step.layerIndex + 1}</span>`;
-      li.append(shortCmd(step.createdBy));
-    }
-    ol.append(li);
-  }
-}
-
 function renderMatrix() {
   const { model } = state.current;
   const wrap = $("matrix-wrap");
   if (model.layers.length === 0) {
-    wrap.hidden = true;
-    showMessage("This image is empty (it has no layers).");
+    wrap.hidden = true;   // updateMessage() says why
     return;
   }
-  hideMessage();
   wrap.hidden = false;
   const table = $("matrix");
   const prev = state.previous.get(state.current.name);
@@ -240,12 +282,9 @@ function renderMatrix() {
     // Only changed layers get a badge: no badge means "same as the previous build".
     const isNew = prevSet && !prevSet.has(layer.diffId);
     const badge = isNew ? `<span class="badge new">new</span>` : "";
-    let buildNote = "";
-    if (isNew) buildNote = "NEW: not in your previous build.";
-    else if (prevSet) buildNote = "Same as in your previous build (docker build shows CACHED).";
-    const tip = [layer.createdBy ?? "", `Layer digest: ${layer.diffId}`, buildNote,
-      `Size: file bytes. docker history shows the space on disk, which is bigger.`].filter(Boolean).join("&#10;");
-    head += `<th class="layerhead" title="${esc(tip).replaceAll("&amp;#10;", "&#10;")}">` +
+    const tip = [layer.createdBy ?? "", `Layer digest: ${layer.diffId}`, buildNote(layer, prevSet),
+      `Size: file bytes. docker history shows the space on disk, which is bigger.`, "Click for the details."].filter(Boolean).join("&#10;");
+    head += `<th class="layerhead clickable" data-layer="${layer.index}" tabindex="0" title="${esc(tip).replaceAll("&amp;#10;", "&#10;")}">` +
       `<div><span class="n">${layer.index + 1}</span>${badge}</div>` +
       `<div class="cmdline">${esc(shortCmd(layer.createdBy ?? ""))}</div>` +
       `<div class="size">${fmtSize(layer.size)} <code class="digest">${shortId(layer.diffId)}</code></div></th>`;
@@ -257,8 +296,13 @@ function renderMatrix() {
   for (const line of lines.slice(0, MAX_ROWS)) body += renderLine(line, model);
   if (lines.length > MAX_ROWS) body += `<tr><td class="pathcell" colspan="${model.layers.length + 2}">${lines.length - MAX_ROWS} more rows. Use the filter.</td></tr>`;
   if (lines.length === 0) body += `<tr><td class="pathcell" colspan="${model.layers.length + 2}">No paths match.</td></tr>`;
+  table.classList.toggle("filtered", !!state.filter);   // a filtered list shows full paths, so the first column gets more room
   table.innerHTML = head + body + "</tbody>";
 
+  table.querySelectorAll("th.layerhead").forEach((th) => {
+    th.addEventListener("click", () => showLayer(Number(th.dataset.layer)));
+    th.addEventListener("keydown", (e) => { if (e.key === "Enter") showLayer(Number(th.dataset.layer)); });
+  });
   table.querySelectorAll("td.c").forEach((td) =>
     td.addEventListener("click", () => showCell(td.dataset.path, Number(td.dataset.layer))));
   table.querySelectorAll("td.sees.click").forEach((td) =>
@@ -269,7 +313,7 @@ function renderMatrix() {
 }
 
 function renderLine(line, model) {
-  const indent = `style="padding-left:${8 + line.depth * 18}px"`;
+  const indent = `style="padding-left:${8 + Math.min(line.depth, MAX_INDENT_LEVELS) * 18}px"`;
   return line.type === "summary" ? renderSummaryLine(line, model, indent) : renderRowLine(line, model, indent);
 }
 
@@ -277,7 +321,7 @@ function renderLine(line, model) {
 function renderSummaryLine(line, model, indent) {
   const rows = subtreeRows(line.node);
   let html = `<tr><td class="pathcell" ${indent}><span class="toggle" data-path="${esc(line.node.path)}" data-open="false">&#9656; ` +
-    `<span class="path">${esc(line.node.path)}/</span></span> <span class="count">(${rows.length} paths)</span></td>`;
+    `<span class="path">${esc(shownPath(line.node.path, line.depth))}/</span></span> <span class="count">(${rows.length} paths)</span></td>`;
   for (const layer of model.layers) html += summaryLayerCell(rows, layer.index);
   return html + summarySeesCell(rows);
 }
@@ -312,17 +356,24 @@ function renderRowLine(line, model, indent) {
   const row = isFolder ? line.node.row : line.row;
   const path = isFolder ? line.node.path : row.path;
   const isDir = row?.entry === "Directory" || isFolder;
-  let html = `<tr data-path="${esc(path)}"><td class="pathcell${isDir ? " dirrow" : ""}" ${indent} title="${esc(path)}">${rowLabel(isFolder, row, path, isDir)}</td>`;
+  let html = `<tr data-path="${esc(path)}"><td class="pathcell${isDir ? " dirrow" : ""}" ${indent} title="${esc(path)}">${rowLabel(isFolder, row, path, isDir, line.depth)}</td>`;
   for (const layer of model.layers) html += rowLayerCell(row, path, isDir, layer.index);
   return html + rowSeesCell(line, row, path, isDir);
 }
 
-function rowLabel(isFolder, row, path, isDir) {
+/** What the first column shows: the full path at the top level and in a filtered list, otherwise only the name,
+ *  because the indentation already shows where it sits. The full path is in the tooltip and in the panel. */
+function shownPath(path, depth) {
+  return depth === 0 ? path : path.slice(path.lastIndexOf("/") + 1);
+}
+
+function rowLabel(isFolder, row, path, isDir, depth) {
+  const shown = esc(shownPath(path, depth));
   if (isFolder) {
-    return `<span class="toggle" data-path="${esc(path)}" data-open="true">&#9662; <span class="path">${esc(path)}/</span></span>`;
+    return `<span class="toggle" data-path="${esc(path)}" data-open="true">&#9662; <span class="path">${shown}/</span></span>`;
   }
   const linkNote = row.entry === "Symlink" ? ' <span class="count">link</span>' : "";
-  return `<span class="path">${esc(path)}${isDir ? "/" : ""}</span>${linkNote}`;
+  return `<span class="path">${shown}${isDir ? "/" : ""}</span>${linkNote}`;
 }
 
 function rowLayerCell(row, path, isDir, layerIndex) {
@@ -343,6 +394,59 @@ function rowSeesCell(line, row, path, isDir) {
 }
 
 // ---------- detail panel ----------
+
+/** What a layer header says about the previous build, or "" when there is no previous build. */
+function buildNote(layer, prevSet) {
+  if (!prevSet) return "";
+  return prevSet.has(layer.diffId)
+    ? "Same as in your previous build (docker build shows CACHED)."
+    : "NEW: not in your previous build.";
+}
+
+/** The steps without a layer (ENV, ARG, LABEL, CMD and so on) that come before the first layer. */
+function stepsWithoutLayerBeforeFirst(history) {
+  const steps = [];
+  for (const s of history) {
+    if (s.layerIndex !== null) break;
+    steps.push(s);
+  }
+  return steps;
+}
+
+/** The steps without a layer right after a layer, up to the next layer. */
+function stepsWithoutLayerAfter(history, layerIndex) {
+  const at = history.findIndex((s) => s.layerIndex === layerIndex);
+  if (at < 0) return [];
+  const steps = [];
+  for (let i = at + 1; i < history.length && history[i].layerIndex === null; i++) steps.push(history[i]);
+  return steps;
+}
+
+function stepList(label, steps) {
+  if (steps.length === 0) return "";
+  return `<p class="what">${label} (they change the image settings, not its files):</p><ul class="stepslist">` +
+    steps.map((s) => `<li><code>${esc(shortCmd(s.createdBy ?? ""))}</code></li>`).join("") + "</ul>";
+}
+
+/** Click on a layer header: the whole command, the size and digest, and the steps that made no layer. */
+function showLayer(index) {
+  const { model } = state.current;
+  const layer = model.layers[index];
+  if (!layer) return;
+  state.selected = null;
+  markSelected();
+  const prev = state.previous.get(state.current.name);
+  const note = buildNote(layer, prev ? new Set(prev) : null);
+  const first = index === 0 ? stepsWithoutLayerBeforeFirst(model.history) : [];
+
+  $("panel-body").innerHTML = `<h2>Layer ${index + 1}</h2>` +
+    `<div class="meta">${fmtSize(layer.size)} of files. Digest <code>${esc(layer.diffId)}</code></div>` +
+    (note ? `<p class="what">${esc(note)}</p>` : "") +
+    stepList("Steps before this layer that make no layer of their own", first) +
+    `<p class="what">The build step:</p><pre>${esc(layer.createdBy ?? "(not recorded)")}</pre>` +
+    stepList("Steps after this layer that make no layer of their own", stepsWithoutLayerAfter(model.history, index));
+  $("panel").hidden = false;
+}
 
 // fromResult: opened from the Result column, so show only the version the container gets.
 async function showCell(path, layer, fromResult = false) {
@@ -442,42 +546,12 @@ function markSelected() {
 
 // ---------- helpers ----------
 
-async function getJson(url) {
-  try {
-    const r = await fetch(url);
-    return r.ok ? await r.json() : null;
-  } catch { return null; }
-}
-
-function showMessage(text, error = false) {
-  const m = $("message");
-  m.textContent = text;
-  m.classList.toggle("error", error);
-  m.hidden = false;
-}
-function hideMessage() { $("message").hidden = true; }
-
 /** "RUN /bin/sh -c echo hi # buildkit" -> "RUN echo hi" */
 function shortCmd(cmd) {
   const BUILDKIT = "# buildkit";   // a suffix check, not a regex: "\s*# buildkit$" backtracks badly on long runs of spaces
   let text = cmd.replace(/\/bin\/sh -c (#\(nop\)\s*)?/, "").trimEnd();
   if (text.endsWith(BUILDKIT)) text = text.slice(0, -BUILDKIT.length);
   return text.trim();
-}
-
-// First 12 hex digits, the way docker images and docker history show IDs.
-function shortId(digest) {
-  return (digest ?? "").replace(/^sha256:/, "").slice(0, 12);
-}
-
-function fmtSize(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
 }
 
 function cmp(a, b) {
@@ -494,11 +568,8 @@ async function copy(button) {
   } catch { /* clipboard blocked: the text is visible anyway */ }
 }
 
-function readSetting(key) { try { return localStorage.getItem("cv." + key); } catch { return null; } }
-function writeSetting(key, value) { try { localStorage.setItem("cv." + key, value); } catch { /* private window */ } }
-
 try {
   await init();
 } catch (e) {
-  showMessage(`Something went wrong in the page: ${e.message}`, true);
+  showMessage(`Something went wrong in the page: ${e.message}`, { error: true });
 }

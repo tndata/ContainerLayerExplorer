@@ -1,0 +1,36 @@
+root = true
+
+# Defaults for every file
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C#
+[*.cs]
+indent_size = 4
+tab_width = 4
+
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+# Project files, JSON, YAML, HTML, CSS and JavaScript use two spaces (the default above)
+[*.{csproj,props,targets,slnx,json,yml,yaml,html,css,js}]
+indent_size = 2
+
+# Markdown: trailing spaces can mean a line break
+[*.md]
+trim_trailing_whitespace = false
+
+# Shell scripts must keep LF line endings
+[*.sh]
+end_of_line = lf

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Container Layer Explorer</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="back" href="/" title="Back to the list of images">&larr; Images</a>
+    <h1>Container Layer Explorer</h1>
+    <span id="image-name" class="imagename"></span>
+    <button id="refresh" type="button" title="Reload the image">Refresh</button>
+    <span id="live" class="live" title="Rebuilds of this image show up automatically">live</span>
+    <input id="filter" type="search" placeholder="Filter paths" aria-label="Filter paths">
+    <details class="help">
+      <summary>Commands</summary>
+      <div class="help-body">
+        <p>Build, then look here. The page follows this image tag and updates by itself.</p>
+        <div class="cmd"><code data-cmd="build">docker build -t demo .</code><button type="button" class="copy">Copy</button></div>
+        <div class="cmd"><code data-cmd="history">docker history demo</code><button type="button" class="copy">Copy</button></div>
+        <div class="cmd"><code data-cmd="run">docker run --rm -it demo sh</code><button type="button" class="copy">Copy</button></div>
+        <div class="cmd"><code data-cmd="save">docker image save demo -o demo.tar</code><button type="button" class="copy">Copy</button></div>
+        <p class="legend">
+          <span class="c Added">A</span> added
+          <span class="c Modified">M</span> changed (whole file stored again)
+          <span class="c Deleted">D</span> deleted (hidden by a whiteout marker)
+        </p>
+      </div>
+    </details>
+  </header>
+
+  <main>
+    <p id="message" class="message" hidden></p>
+    <section id="summary" class="summary" hidden>
+      <div id="sizes" class="sizes"></div>
+    </section>
+    <div id="matrix-wrap" class="matrix-wrap" hidden>
+      <!-- explorer.js replaces the whole table content with one column per layer when an image is shown -->
+      <table id="matrix" class="matrix"><thead><tr><th scope="col" class="pathcol">Path</th></tr></thead><tbody></tbody></table>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>By <a href="https://tn-data.se/" target="_blank" rel="noopener">Tore Nestenius</a> &nbsp;|&nbsp;
+      <a href="https://nestenius.se/" target="_blank" rel="noopener">Blog</a> &nbsp;|&nbsp;
+      <a href="https://tn-data.se/courses/introduction-to-containers-and-kubernetes/" target="_blank" rel="noopener">Introduction to Containers and Kubernetes</a></p>
+    <p class="trademark">Independent project. Docker is a trademark of Docker, Inc.</p>
+  </footer>
+
+  <aside id="panel" class="panel" hidden>
+    <button id="panel-close" type="button" class="close" aria-label="Close">×</button>
+    <div id="panel-body"></div>
+  </aside>
+
+  <script type="module" src="explorer.js"></script>
+</body>
+</html>

@@ -9,48 +9,43 @@
 <body>
   <header class="bar">
     <h1>Container Layer Explorer</h1>
-    <label class="picker">Image
-      <select id="image-select" aria-label="Image"></select>
-    </label>
-    <button id="refresh" type="button" title="Reload the image list and the selected image">Refresh</button>
-    <span id="live" class="live" title="Rebuilds of the selected image show up automatically">live</span>
-    <input id="filter" type="search" placeholder="Filter paths" aria-label="Filter paths">
-    <details class="help">
-      <summary>Commands</summary>
-      <div class="help-body">
-        <p>Build, then look here. The page follows the selected tag and updates by itself.</p>
-        <div class="cmd"><code>docker build -t demo .</code><button type="button" class="copy">Copy</button></div>
-        <div class="cmd"><code>docker history demo</code><button type="button" class="copy">Copy</button></div>
-        <div class="cmd"><code>docker run --rm -it demo sh</code><button type="button" class="copy">Copy</button></div>
-        <div class="cmd"><code>docker image save demo -o demo.tar</code><button type="button" class="copy">Copy</button></div>
-        <p class="legend">
-          <span class="c Added">A</span> added
-          <span class="c Modified">M</span> changed (whole file stored again)
-          <span class="c Deleted">D</span> deleted (hidden by a whiteout marker)
-        </p>
-      </div>
-    </details>
-    <span class="credit">&copy; <a href="https://tn-data.se" target="_blank" rel="noopener">TN-Datakonsult</a>
-      &middot; <a href="https://nestenius.se" target="_blank" rel="noopener">Blog</a></span>
+    <span id="live" class="live" title="The list updates by itself when images are built, tagged or removed">live</span>
   </header>
 
-  <main>
-    <p id="message" class="message" hidden></p>
-    <section id="summary" class="summary" hidden>
-      <div id="sizes" class="sizes"></div>
-      <ol id="steps" class="steps" aria-label="Dockerfile steps"></ol>
+  <main class="start">
+    <p class="lead">See what is inside a Docker image: every layer, and every file each layer adds, changes or deletes.</p>
+
+    <section class="card" aria-labelledby="docker-title">
+      <h2 id="docker-title">Docker</h2>
+      <p id="docker-status" class="docker-status">Checking Docker ...</p>
+      <p id="docker-note" class="note" hidden>Container Layer Explorer works with Docker Desktop. It has been tested with Docker Desktop on Windows only.</p>
     </section>
-    <div id="matrix-wrap" class="matrix-wrap" hidden>
-      <!-- app.js replaces the whole table content with one column per layer when an image is shown -->
-      <table id="matrix" class="matrix"><thead><tr><th scope="col" class="pathcol">Path</th></tr></thead><tbody></tbody></table>
-    </div>
+
+    <p id="message" class="message" hidden></p>
+
+    <section id="images-card" class="card" aria-labelledby="images-title" hidden>
+      <div class="card-head">
+        <h2 id="images-title">Images</h2>
+        <a id="explore" class="button primary" href="#" aria-disabled="true">Explore</a>
+      </div>
+      <p id="images-empty" class="empty" hidden>No tagged images yet. Build one, for example: <code>docker build -t demo .</code></p>
+      <table id="images" class="images">
+        <thead>
+          <tr><th scope="col">Image</th><th scope="col">ID</th><th scope="col" class="num">Size</th><th scope="col">Created</th><th scope="col"><span class="sr-only">Explore</span></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
   </main>
 
-  <aside id="panel" class="panel" hidden>
-    <button id="panel-close" type="button" class="close" aria-label="Close">×</button>
-    <div id="panel-body"></div>
-  </aside>
+  <footer class="site-footer">
+    <p>By <a href="https://tn-data.se/" target="_blank" rel="noopener">Tore Nestenius</a> &nbsp;|&nbsp;
+      <a href="https://nestenius.se/" target="_blank" rel="noopener">Blog</a> &nbsp;|&nbsp;
+      <a href="https://tn-data.se/courses/introduction-to-containers-and-kubernetes/" target="_blank" rel="noopener">Introduction to Containers and Kubernetes</a></p>
+    <p class="trademark">Independent project. Docker is a trademark of Docker, Inc.</p>
+  </footer>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="start.js"></script>
 </body>
 </html>

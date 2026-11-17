@@ -1,0 +1,16 @@
+# Normalize line endings: text files are stored with LF in the repository.
+* text=auto
+
+# Shell scripts must always use LF, also on Windows.
+*.sh text eol=lf
+
+# Binary files: never diff or convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff2 binary
+*.zip binary
+*.tar binary
+*.gz binary
