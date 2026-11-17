@@ -8,7 +8,7 @@ namespace ContainerLayerExplorer.Api;
 /// connection or closes it, the feed sends one <c>disconnected</c> event, waits, and tries again; when Docker is back
 /// the connection's own <c>connected</c> event follows. A failure is logged as one line, not a stack trace.
 /// </summary>
-public static class EventStream
+public static partial class EventStream
 {
     public static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromSeconds(3);
 
@@ -36,7 +36,7 @@ public static class EventStream
 
             if (ct.IsCancellationRequested) yield break; // the browser closed the stream; nothing went wrong
 
-            logger.LogWarning("Docker event stream ended ({Why}); trying again in {Seconds} seconds.", ending.Why ?? "Docker closed it", retryDelay.TotalSeconds);
+            LogEnded(logger, ending.Why ?? "Docker closed it", retryDelay.TotalSeconds);
             if (!disconnectedSent)
             {
                 disconnectedSent = true;
@@ -68,6 +68,9 @@ public static class EventStream
             await enumerator.DisposeAsync();
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Docker event stream ended ({Why}); trying again in {Seconds} seconds.")]
+    private static partial void LogEnded(ILogger logger, string why, double seconds);
 
     private static async Task<DockerEvent?> NextOrNull(IAsyncEnumerator<DockerEvent> enumerator, Ending ending)
     {

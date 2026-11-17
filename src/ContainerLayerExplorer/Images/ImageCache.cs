@@ -10,7 +10,7 @@ public sealed record LoadedImage(string Id, string Name, ImageModel Model, IImag
 /// Saves images from Docker into temp folders and keeps the parsed models of the last few.
 /// Keyed by image ID: an ID always means the same content, so a cached entry is never stale.
 /// </summary>
-public sealed class ImageCache : IDisposable
+public sealed partial class ImageCache : IDisposable
 {
     private const int MaxImages = 6;
 
@@ -41,7 +41,7 @@ public sealed class ImageCache : IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            var cached = _images.FirstOrDefault(i => i.Id == id);
+            var cached = _images.Find(i => i.Id == id);
             if (cached is not null)
             {
                 _images.Remove(cached);
@@ -74,7 +74,7 @@ public sealed class ImageCache : IDisposable
             var loaded = new LoadedImage(id, name, model, files);
             _images.Add(loaded);
             Evict();
-            _logger.LogInformation("Loaded {Name} ({Id}): {Layers} layers", name, id[..19], loaded.Model.Layers.Count);
+            LogLoaded(name, id[..19], loaded.Model.Layers.Count);
             return loaded;
         }
         finally
@@ -86,7 +86,7 @@ public sealed class ImageCache : IDisposable
     public LoadedImage? Get(string id)
     {
         _lock.Wait();
-        try { return _images.FirstOrDefault(i => i.Id == id); }
+        try { return _images.Find(i => i.Id == id); }
         finally { _lock.Release(); }
     }
 
@@ -108,9 +108,16 @@ public sealed class ImageCache : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning(ex, "Could not delete {Dir}", dir);
+            LogDeleteFailed(ex, dir);
         }
     }
 
     public void Dispose() => _folder.Dispose();
+
+    // Generated at compile time: no argument array is built on each call, and nothing is formatted when the level is off.
+    [LoggerMessage(Level = LogLevel.Information, Message = "Loaded {Name} ({Id}): {Layers} layers")]
+    private partial void LogLoaded(string name, string id, int layers);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete {Dir}")]
+    private partial void LogDeleteFailed(Exception ex, string dir);
 }

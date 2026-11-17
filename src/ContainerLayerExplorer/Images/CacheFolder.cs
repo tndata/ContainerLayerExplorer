@@ -7,7 +7,7 @@ namespace ContainerLayerExplorer.Images;
 /// older than a day and not in use (each running copy keeps a lock file open in its folder, so a copy that has been
 /// idle for days is left alone).
 /// </summary>
-public sealed class CacheFolder : IDisposable
+public sealed partial class CacheFolder : IDisposable
 {
     public static readonly TimeSpan StaleAfter = TimeSpan.FromDays(1);
 
@@ -51,7 +51,7 @@ public sealed class CacheFolder : IDisposable
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                logger.LogWarning(ex, "Could not remove the old folder {Dir}", dir);
+                LogRemoveFailed(logger, ex, dir);
             }
         }
     }
@@ -88,7 +88,13 @@ public sealed class CacheFolder : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning(ex, "Could not delete {Dir}", Path);
+            LogDeleteFailed(_logger, ex, Path);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not remove the old folder {Dir}")]
+    private static partial void LogRemoveFailed(ILogger logger, Exception ex, string dir);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete {Dir}")]
+    private static partial void LogDeleteFailed(ILogger logger, Exception ex, string dir);
 }

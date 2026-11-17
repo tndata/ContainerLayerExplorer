@@ -11,7 +11,7 @@ namespace ContainerLayerExplorer.Api;
 /// fixed sentence: the details go to the log, never to the page, and no stack trace is sent in any
 /// environment (the developer exception page only sees exceptions that get past this handler).
 /// </summary>
-public static class ApiErrors
+public static partial class ApiErrors
 {
     public const string UnexpectedMessage = "Something went wrong inside Container Layer Explorer. The details are in the console where it runs.";
 
@@ -37,11 +37,17 @@ public static class ApiErrors
         var (status, message) = Map(ex);
         var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("ContainerLayerExplorer.Api");
         if (status == StatusCodes.Status500InternalServerError)
-            logger.LogError(ex, "Unhandled error in {Path}", context.Request.Path);
+            LogUnhandled(logger, ex, context.Request.Path);
         else
-            logger.LogWarning("{Path} failed with {Status}: {Message}", context.Request.Path, status, message);
+            LogKnownFailure(logger, context.Request.Path, status, message);
 
         context.Response.StatusCode = status;
         await context.Response.WriteAsJsonAsync(new { error = message }, context.RequestAborted);
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled error in {Path}")]
+    private static partial void LogUnhandled(ILogger logger, Exception ex, PathString path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Path} failed with {Status}: {Message}")]
+    private static partial void LogKnownFailure(ILogger logger, PathString path, int status, string message);
 }

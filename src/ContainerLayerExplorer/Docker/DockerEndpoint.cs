@@ -38,7 +38,7 @@ public sealed record DockerEndpoint(DockerEndpointKind Kind, string Address)
     {
         if (!string.IsNullOrEmpty(dockerHost)) return dockerHost;
         if (!isWindows) return "unix:///var/run/docker.sock";
-        var pipe = WindowsPipes.FirstOrDefault(pipeExists) ?? DefaultWindowsPipe;
+        var pipe = Array.Find(WindowsPipes, p => pipeExists(p)) ?? DefaultWindowsPipe;
         return $"npipe:////./pipe/{pipe}";
     }
 

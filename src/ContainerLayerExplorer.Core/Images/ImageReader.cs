@@ -75,7 +75,7 @@ public static class ImageReader
             entriesLeft -= entries.Count;
             var changes = stack.Apply(i, entries);
             var size = entries.Where(e => e.Entry == EntryKind.File).Sum(e => e.Size);
-            var createdBy = history.FirstOrDefault(h => h.LayerIndex == i)?.CreatedBy;
+            var createdBy = history.Find(h => h.LayerIndex == i)?.CreatedBy;
             layers.Add(new Layer(i, i < diffIds.Count ? diffIds[i] : "", layerPaths[i],
                 files.Length(layerPaths[i]), size, createdBy, changes));
         }
