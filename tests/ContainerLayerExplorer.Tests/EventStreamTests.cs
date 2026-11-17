@@ -70,7 +70,7 @@ public class EventStreamTests
         using var docker = new DockerClient("npipe:////./pipe/test", new FakeHandler(body), TimeSpan.FromSeconds(5), _ => true);
 
         var got = new List<DockerEvent>();
-        await foreach (var e in docker.WatchImageEventsAsync(default)) got.Add(e);
+        await foreach (var e in docker.WatchImageEventsAsync(TestContext.Current.CancellationToken)) got.Add(e);
 
         Assert.Equal("connected,tag,delete", Actions(got));
         Assert.Equal("sha256:two", got[^1].Id);

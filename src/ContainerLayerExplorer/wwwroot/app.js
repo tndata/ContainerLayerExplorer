@@ -1,10 +1,10 @@
 // Container Layer Explorer page. Talks only to /api (see Api/Endpoints.cs). No framework.
-"use strict";
+// Loaded as a module (index.html), so it is strict already and can use top-level await.
 
 // Collapse rules (ADR 0004). A folder starts collapsed when it has more than COLLAPSE_OVER changed
 // paths below it, is in ALWAYS_COLLAPSE, or only the first (base) layer touches it.
 const COLLAPSE_OVER = 20;
-const ALWAYS_COLLAPSE = ["/proc", "/sys", "/dev", "/usr/share/doc", "/var/cache", "/usr/lib", "/lib"];
+const ALWAYS_COLLAPSE = new Set(["/proc", "/sys", "/dev", "/usr/share/doc", "/var/cache", "/usr/lib", "/lib"]);
 const NEVER_COLLAPSE = ["/app", "/home", "/src", "/root"];
 const MAX_ROWS = 3000;
 
@@ -133,7 +133,7 @@ function isOpen(node) {
   if (state.open.has(node.path)) return state.open.get(node.path);
   if (NEVER_COLLAPSE.some((p) => node.path === p || node.path.startsWith(p + "/"))) return true;
   if (state.current.model.config.workingDir === node.path) return true;
-  if (ALWAYS_COLLAPSE.includes(node.path)) return false;
+  if (ALWAYS_COLLAPSE.has(node.path)) return false;
   if (onlyBaseLayer(node)) return false;
   return node.count <= COLLAPSE_OVER;
 }
@@ -168,7 +168,10 @@ function displayLines() {
 
 function subtreeRows(node) {
   const rows = [];
-  const walk = (n) => { if (n.row) rows.push(n.row); n.children.forEach(walk); };
+  const walk = (n) => {
+    if (n.row) rows.push(n.row);
+    n.children.forEach(walk);
+  };
   walk(node);
   return rows;
 }
@@ -242,7 +245,7 @@ function renderMatrix() {
     else if (prevSet) buildNote = "Same as in your previous build (docker build shows CACHED).";
     const tip = [layer.createdBy ?? "", `Layer digest: ${layer.diffId}`, buildNote,
       `Size: file bytes. docker history shows the space on disk, which is bigger.`].filter(Boolean).join("&#10;");
-    head += `<th class="layerhead" title="${esc(tip).replace(/&amp;#10;/g, "&#10;")}">` +
+    head += `<th class="layerhead" title="${esc(tip).replaceAll("&amp;#10;", "&#10;")}">` +
       `<div><span class="n">${layer.index + 1}</span>${badge}</div>` +
       `<div class="cmdline">${esc(shortCmd(layer.createdBy ?? ""))}</div>` +
       `<div class="size">${fmtSize(layer.size)} <code class="digest">${shortId(layer.diffId)}</code></div></th>`;
@@ -267,50 +270,76 @@ function renderMatrix() {
 
 function renderLine(line, model) {
   const indent = `style="padding-left:${8 + line.depth * 18}px"`;
-  if (line.type === "summary") {
-    const rows = subtreeRows(line.node);
-    let html = `<tr><td class="pathcell" ${indent}><span class="toggle" data-path="${esc(line.node.path)}" data-open="false">&#9656; ` +
-      `<span class="path">${esc(line.node.path)}/</span></span> <span class="count">(${rows.length} paths)</span></td>`;
-    for (const layer of model.layers) {
-      const n = { Added: 0, Modified: 0, Deleted: 0 };
-      for (const r of rows) { const c = r.cells[layer.index]; if (c && !(r.entry === "Directory" && c.kind === "Modified")) n[c.kind]++; }
-      const parts = [n.Added && `<span class="a">+${n.Added}</span>`, n.Modified && `<span class="m">~${n.Modified}</span>`, n.Deleted && `<span class="d">&minus;${n.Deleted}</span>`].filter(Boolean);
-      html += `<td class="agg${parts.length ? " has" : ""}">${parts.join(" ")}</td>`;
-    }
-    const seen = rows.filter((r) => r.sees && r.sees.entry !== "Directory").length;
-    // Number = files the container gets; a folder holding only folders still exists, so it gets a plain tick.
-    const any = seen || rows.some((r) => r.sees);
-    let seesCell = "";
-    if (seen) seesCell = `&#10003; <span class="count">${seen}</span>`;
-    else if (any) seesCell = "&#10003;";
-    return html + `<td class="sees${seen ? "" : " dir"}">${seesCell}</td></tr>`;
-  }
+  return line.type === "summary" ? renderSummaryLine(line, model, indent) : renderRowLine(line, model, indent);
+}
 
-  const row = line.type === "folder" ? line.node.row : line.row;
-  const path = line.type === "folder" ? line.node.path : row.path;
-  const isDir = row?.entry === "Directory" || line.type === "folder";
-  let label;
-  if (line.type === "folder") {
-    label = `<span class="toggle" data-path="${esc(path)}" data-open="true">&#9662; <span class="path">${esc(path)}/</span></span>`;
-  } else {
-    const linkNote = row.entry === "Symlink" ? ' <span class="count">link</span>' : "";
-    label = `<span class="path">${esc(path)}${isDir ? "/" : ""}</span>${linkNote}`;
+/** A collapsed folder: one line with a count of what changed below it in each layer. */
+function renderSummaryLine(line, model, indent) {
+  const rows = subtreeRows(line.node);
+  let html = `<tr><td class="pathcell" ${indent}><span class="toggle" data-path="${esc(line.node.path)}" data-open="false">&#9656; ` +
+    `<span class="path">${esc(line.node.path)}/</span></span> <span class="count">(${rows.length} paths)</span></td>`;
+  for (const layer of model.layers) html += summaryLayerCell(rows, layer.index);
+  return html + summarySeesCell(rows);
+}
+
+/** How many paths below a collapsed folder this layer adds, changes and deletes. */
+function summaryLayerCell(rows, layerIndex) {
+  const n = { Added: 0, Modified: 0, Deleted: 0 };
+  for (const r of rows) {
+    const c = r.cells[layerIndex];
+    if (c && !(r.entry === "Directory" && c.kind === "Modified")) n[c.kind]++;
   }
-  let html = `<tr data-path="${esc(path)}"><td class="pathcell${isDir ? " dirrow" : ""}" ${indent} title="${esc(path)}">${label}</td>`;
-  for (const layer of model.layers) {
-    // A folder is "modified" whenever something inside it changes: true, but noise. Show only A and D.
-    let c = row && !row.hidden ? row.cells[layer.index] : null;
-    if (c && isDir && c.kind === "Modified") c = null;
-    const dirClass = isDir ? " dir" : "";
-    html += c
-      ? `<td class="c ${c.kind}${dirClass}" data-path="${esc(path)}" data-layer="${layer.index}">${c.kind[0]}</td>`
-      : "<td></td>";
+  const parts = [];
+  if (n.Added) parts.push(`<span class="a">+${n.Added}</span>`);
+  if (n.Modified) parts.push(`<span class="m">~${n.Modified}</span>`);
+  if (n.Deleted) parts.push(`<span class="d">&minus;${n.Deleted}</span>`);
+  return `<td class="agg${parts.length ? " has" : ""}">${parts.join(" ")}</td>`;
+}
+
+function summarySeesCell(rows) {
+  const seen = rows.filter((r) => r.sees && r.sees.entry !== "Directory").length;
+  // Number = files the container gets; a folder holding only folders still exists, so it gets a plain tick.
+  const any = seen || rows.some((r) => r.sees);
+  let content = "";
+  if (seen) content = `&#10003; <span class="count">${seen}</span>`;
+  else if (any) content = "&#10003;";
+  return `<td class="sees${seen ? "" : " dir"}">${content}</td></tr>`;
+}
+
+/** A path, or an open folder: the path, one cell per layer, and the Result cell. */
+function renderRowLine(line, model, indent) {
+  const isFolder = line.type === "folder";
+  const row = isFolder ? line.node.row : line.row;
+  const path = isFolder ? line.node.path : row.path;
+  const isDir = row?.entry === "Directory" || isFolder;
+  let html = `<tr data-path="${esc(path)}"><td class="pathcell${isDir ? " dirrow" : ""}" ${indent} title="${esc(path)}">${rowLabel(isFolder, row, path, isDir)}</td>`;
+  for (const layer of model.layers) html += rowLayerCell(row, path, isDir, layer.index);
+  return html + rowSeesCell(line, row, path, isDir);
+}
+
+function rowLabel(isFolder, row, path, isDir) {
+  if (isFolder) {
+    return `<span class="toggle" data-path="${esc(path)}" data-open="true">&#9662; <span class="path">${esc(path)}/</span></span>`;
   }
+  const linkNote = row.entry === "Symlink" ? ' <span class="count">link</span>' : "";
+  return `<span class="path">${esc(path)}${isDir ? "/" : ""}</span>${linkNote}`;
+}
+
+function rowLayerCell(row, path, isDir, layerIndex) {
+  // A folder is "modified" whenever something inside it changes: true, but noise. Show only A and D.
+  let c = row && !row.hidden ? row.cells[layerIndex] : null;
+  if (c && isDir && c.kind === "Modified") c = null;
+  if (!c) return "<td></td>";
+  const dirClass = isDir ? " dir" : "";
+  return `<td class="c ${c.kind}${dirClass}" data-path="${esc(path)}" data-layer="${layerIndex}">${c.kind[0]}</td>`;
+}
+
+function rowSeesCell(line, row, path, isDir) {
   // A folder only implied by the files inside it has no entry of its own: present if anything inside is.
   const sees = row?.sees ?? (line.type === "folder" && subtreeRows(line.node).some((r) => r.sees));
   const clickable = !isDir && row?.sees;
   const dataPath = clickable ? ` data-path="${esc(path)}"` : "";
-  return html + `<td class="sees${isDir ? " dir" : ""}${clickable ? " click" : ""}"${dataPath}>${sees ? "&#10003;" : ""}</td></tr>`;
+  return `<td class="sees${isDir ? " dir" : ""}${clickable ? " click" : ""}"${dataPath}>${sees ? "&#10003;" : ""}</td></tr>`;
 }
 
 // ---------- detail panel ----------
@@ -468,4 +497,8 @@ async function copy(button) {
 function readSetting(key) { try { return localStorage.getItem("cv." + key); } catch { return null; } }
 function writeSetting(key, value) { try { localStorage.setItem("cv." + key, value); } catch { /* private window */ } }
 
-init().catch((e) => showMessage(`Something went wrong in the page: ${e.message}`, true));
+try {
+  await init();
+} catch (e) {
+  showMessage(`Something went wrong in the page: ${e.message}`, true);
+}

@@ -12,6 +12,12 @@ public static class EventStream
 {
     public static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromSeconds(3);
 
+    /// <summary>Why one connection ended, when it ended because of an error and not because Docker closed it.</summary>
+    private sealed class Ending
+    {
+        public string? Why { get; set; }
+    }
+
     public static async IAsyncEnumerable<DockerEvent> Watch(
         Func<CancellationToken, IAsyncEnumerable<DockerEvent>> open,
         TimeSpan retryDelay,
@@ -21,35 +27,16 @@ public static class EventStream
         var disconnectedSent = false;
         while (!ct.IsCancellationRequested)
         {
-            string? why = null;
-            var enumerator = open(ct).GetAsyncEnumerator(ct);
-            try
+            var ending = new Ending();
+            await foreach (var e in OneConnection(open, ending, ct))
             {
-                while (true)
-                {
-                    DockerEvent? next = null;
-                    try
-                    {
-                        if (await enumerator.MoveNextAsync()) next = enumerator.Current;
-                    }
-                    catch (Exception ex) when (ex is DockerUnavailableException or HttpRequestException or IOException or OperationCanceledException)
-                    {
-                        why = ex.Message;
-                    }
-
-                    if (next is null) break;
-                    disconnectedSent = false;
-                    yield return next;
-                }
-            }
-            finally
-            {
-                await enumerator.DisposeAsync();
+                disconnectedSent = false;
+                yield return e;
             }
 
             if (ct.IsCancellationRequested) yield break; // the browser closed the stream; nothing went wrong
 
-            logger.LogWarning("Docker event stream ended ({Why}); trying again in {Seconds} seconds.", why ?? "Docker closed it", retryDelay.TotalSeconds);
+            logger.LogWarning("Docker event stream ended ({Why}); trying again in {Seconds} seconds.", ending.Why ?? "Docker closed it", retryDelay.TotalSeconds);
             if (!disconnectedSent)
             {
                 disconnectedSent = true;
@@ -57,6 +44,41 @@ public static class EventStream
             }
 
             await Task.Delay(retryDelay, ct).ContinueWith(_ => { }, CancellationToken.None); // a cancelled wait ends the loop above
+        }
+    }
+
+    /// <summary>The events of one connection. It ends when Docker closes the connection or fails, and <paramref name="ending"/> says which.</summary>
+    private static async IAsyncEnumerable<DockerEvent> OneConnection(
+        Func<CancellationToken, IAsyncEnumerable<DockerEvent>> open,
+        Ending ending,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var enumerator = open(ct).GetAsyncEnumerator(ct);
+        try
+        {
+            while (true)
+            {
+                var next = await NextOrNull(enumerator, ending);
+                if (next is null) yield break;
+                yield return next;
+            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
+        }
+    }
+
+    private static async Task<DockerEvent?> NextOrNull(IAsyncEnumerator<DockerEvent> enumerator, Ending ending)
+    {
+        try
+        {
+            return await enumerator.MoveNextAsync() ? enumerator.Current : null;
+        }
+        catch (Exception ex) when (ex is DockerUnavailableException or HttpRequestException or IOException or OperationCanceledException)
+        {
+            ending.Why = ex.Message;
+            return null;
         }
     }
 }

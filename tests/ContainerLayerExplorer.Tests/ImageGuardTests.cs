@@ -107,8 +107,8 @@ public class ImageGuardTests
         using var withSize = Client("""{"Id":"sha256:abc","Size":123456789,"Os":"linux","Architecture":"amd64","RootFS":{"Layers":["a"]}}""");
         using var withoutSize = Client("""{"Id":"sha256:abc","RootFS":{"Layers":["a"]}}""");
 
-        Assert.Equal(123456789, (await withSize.GetImageInfoAsync("x", default))!.Size);
-        Assert.Equal(0, (await withoutSize.GetImageInfoAsync("x", default))!.Size);
+        Assert.Equal(123456789, (await withSize.GetImageInfoAsync("x", TestContext.Current.CancellationToken))!.Size);
+        Assert.Equal(0, (await withoutSize.GetImageInfoAsync("x", TestContext.Current.CancellationToken))!.Size);
     }
 
     private sealed class FakeHandler(string json) : HttpMessageHandler

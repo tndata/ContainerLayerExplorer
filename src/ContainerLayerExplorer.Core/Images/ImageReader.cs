@@ -14,6 +14,7 @@ public sealed record ImageReadOptions(int MaxEntries = 200_000);
 public static class ImageReader
 {
     private const int MaxIndexDepth = 5;
+    private const string ManifestFile = "manifest.json";
 
     public static ImageModel Read(IImageFiles files, ImageReadOptions? options = null)
     {
@@ -35,7 +36,7 @@ public static class ImageReader
 
     private static ImageModel ReadImage(IImageFiles files, ImageReadOptions options)
     {
-        var (configPath, layerPaths) = files.Exists("manifest.json") ? FromLegacyManifest(files) : FromOciIndex(files);
+        var (configPath, layerPaths) = files.Exists(ManifestFile) ? FromLegacyManifest(files) : FromOciIndex(files);
 
         using var configDoc = ParseJson(files, configPath, "the image config");
         var config = configDoc.RootElement;
@@ -43,34 +44,7 @@ public static class ImageReader
         var history = ReadHistory(config, layerPaths.Count);
 
         var stack = new LayerStack();
-        var layers = new List<Layer>();
-        var entryCount = 0;
-        var truncated = false;
-        for (var i = 0; i < layerPaths.Count; i++)
-        {
-            var entries = new List<RawEntry>();
-            if (!truncated)
-            {
-                try
-                {
-                    using var stream = files.OpenRequired(layerPaths[i]);
-                    foreach (var e in LayerReader.ReadEntries(stream))
-                    {
-                        if (++entryCount > options.MaxEntries) { truncated = true; break; }
-                        entries.Add(e);
-                    }
-                }
-                catch (ImageReadException ex)
-                {
-                    throw new ImageReadException($"layer {i + 1}: {ex.Reason}", ex.InnerException);
-                }
-            }
-            var changes = stack.Apply(i, entries);
-            var size = entries.Where(e => e.Entry == EntryKind.File).Sum(e => e.Size);
-            var createdBy = history.FirstOrDefault(h => h.LayerIndex == i)?.CreatedBy;
-            layers.Add(new Layer(i, i < diffIds.Count ? diffIds[i] : "", layerPaths[i],
-                files.Length(layerPaths[i]), size, createdBy, changes));
-        }
+        var (layers, truncated) = ReadLayers(files, layerPaths, diffIds, history, stack, options.MaxEntries);
 
         var visible = stack.Visible.OrderBy(v => v.Path, StringComparer.Ordinal).ToList();
         return new ImageModel(
@@ -85,9 +59,53 @@ public static class ImageReader
             truncated);
     }
 
+    /// <summary>
+    /// Reads every layer in order and stacks them. Once <paramref name="maxEntries"/> entries have been read in all,
+    /// the rest of the image is not read and the result is marked as cut off.
+    /// </summary>
+    private static (List<Layer> Layers, bool Truncated) ReadLayers(
+        IImageFiles files, List<string> layerPaths, List<string> diffIds, List<HistoryStep> history, LayerStack stack, int maxEntries)
+    {
+        var layers = new List<Layer>();
+        var entriesLeft = maxEntries;
+        var truncated = false;
+        for (var i = 0; i < layerPaths.Count; i++)
+        {
+            var entries = truncated ? [] : ReadLayerEntries(files, layerPaths[i], i, entriesLeft, out truncated);
+            entriesLeft -= entries.Count;
+            var changes = stack.Apply(i, entries);
+            var size = entries.Where(e => e.Entry == EntryKind.File).Sum(e => e.Size);
+            var createdBy = history.FirstOrDefault(h => h.LayerIndex == i)?.CreatedBy;
+            layers.Add(new Layer(i, i < diffIds.Count ? diffIds[i] : "", layerPaths[i],
+                files.Length(layerPaths[i]), size, createdBy, changes));
+        }
+        return (layers, truncated);
+    }
+
+    /// <summary>The entries of one layer, up to <paramref name="budget"/>; <paramref name="hitLimit"/> says there were more.</summary>
+    private static List<RawEntry> ReadLayerEntries(IImageFiles files, string path, int index, int budget, out bool hitLimit)
+    {
+        var entries = new List<RawEntry>();
+        hitLimit = false;
+        try
+        {
+            using var stream = files.OpenRequired(path);
+            foreach (var e in LayerReader.ReadEntries(stream))
+            {
+                if (entries.Count >= budget) { hitLimit = true; break; }
+                entries.Add(e);
+            }
+        }
+        catch (ImageReadException ex)
+        {
+            throw new ImageReadException($"layer {index + 1}: {ex.Reason}", ex.InnerException);
+        }
+        return entries;
+    }
+
     private static (string Config, List<string> Layers) FromLegacyManifest(IImageFiles files)
     {
-        using var doc = ParseJson(files, "manifest.json", "manifest.json");
+        using var doc = ParseJson(files, ManifestFile, ManifestFile);
         if (doc.RootElement.ValueKind != JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0)
             throw new ImageReadException("manifest.json is empty.");
         var first = doc.RootElement[0];
@@ -95,7 +113,7 @@ public static class ImageReader
         var layers = first.TryGetProperty("Layers", out var l) && l.ValueKind == JsonValueKind.Array
             ? l.EnumerateArray().Select(x => StringOrThrow(x, "manifest.json has an invalid layer entry.")).ToList()
             : []; // FROM scratch with no files: "Layers": null
-        return (RequireString(first, "Config", "manifest.json"), layers);
+        return (RequireString(first, "Config", ManifestFile), layers);
     }
 
     private static (string Config, List<string> Layers) FromOciIndex(IImageFiles files)

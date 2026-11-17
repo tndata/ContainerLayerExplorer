@@ -34,7 +34,7 @@ public class ImageExtractorTests
         var work = NewWorkFolder();
         try
         {
-            await ImageExtractor.ExtractAsync(Tar(("manifest.json", "[]"), ("blobs/sha256/abc", "data")), Path.Combine(work, "target"), default);
+            await ImageExtractor.ExtractAsync(Tar(("manifest.json", "[]"), ("blobs/sha256/abc", "data")), Path.Combine(work, "target"), TestContext.Current.CancellationToken);
 
             Assert.Equal("[]", File.ReadAllText(Path.Combine(work, "target", "manifest.json")));
             Assert.Equal("data", File.ReadAllText(Path.Combine(work, "target", "blobs", "sha256", "abc")));
@@ -52,7 +52,7 @@ public class ImageExtractorTests
         try
         {
             var ex = await Assert.ThrowsAsync<ImageReadException>(() =>
-                ImageExtractor.ExtractAsync(Tar(("ok.txt", "fine"), ("../escape.txt", "gotcha")), Path.Combine(work, "target"), default));
+                ImageExtractor.ExtractAsync(Tar(("ok.txt", "fine"), ("../escape.txt", "gotcha")), Path.Combine(work, "target"), TestContext.Current.CancellationToken));
 
             Assert.StartsWith("This image could not be read: ", ex.Message);
             Assert.False(File.Exists(Path.Combine(work, "escape.txt")), "the entry escaped the target folder");
@@ -72,7 +72,7 @@ public class ImageExtractorTests
             using var notATar = new MemoryStream(Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("this is not a tar file. ", 100))));
 
             var ex = await Assert.ThrowsAsync<ImageReadException>(() =>
-                ImageExtractor.ExtractAsync(notATar, Path.Combine(work, "target"), default));
+                ImageExtractor.ExtractAsync(notATar, Path.Combine(work, "target"), TestContext.Current.CancellationToken));
 
             Assert.Contains("could not be unpacked", ex.Message);
         }

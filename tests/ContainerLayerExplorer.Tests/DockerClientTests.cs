@@ -26,7 +26,7 @@ public class DockerClientTests
         using var client = new DockerClient("npipe:////./pipe/cle-test-" + Guid.NewGuid().ToString("N"));
         var clock = Stopwatch.StartNew();
 
-        var ex = await Assert.ThrowsAsync<DockerUnavailableException>(() => client.GetVersionAsync(default));
+        var ex = await Assert.ThrowsAsync<DockerUnavailableException>(() => client.GetVersionAsync(TestContext.Current.CancellationToken));
 
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"took {clock.Elapsed}");
         Assert.Contains("Cannot reach Docker at", ex.Message);
@@ -38,7 +38,7 @@ public class DockerClientTests
     {
         using var client = new DockerClient("tcp://localhost:2375");
 
-        var ex = await Assert.ThrowsAsync<DockerUnavailableException>(() => client.ListImagesAsync(default));
+        var ex = await Assert.ThrowsAsync<DockerUnavailableException>(() => client.ListImagesAsync(TestContext.Current.CancellationToken));
 
         Assert.Contains("tcp://localhost:2375", ex.Message);
         Assert.Contains("not supported", ex.Message);
@@ -49,7 +49,7 @@ public class DockerClientTests
     {
         using var client = Client((_, _) => throw new HttpRequestException("connection refused"));
 
-        var ex = await Assert.ThrowsAsync<DockerUnavailableException>(() => client.GetVersionAsync(default));
+        var ex = await Assert.ThrowsAsync<DockerUnavailableException>(() => client.GetVersionAsync(TestContext.Current.CancellationToken));
 
         Assert.Contains($"Cannot reach Docker at {TestEndpoint}", ex.Message);
         Assert.IsType<HttpRequestException>(ex.InnerException);
@@ -64,7 +64,7 @@ public class DockerClientTests
             return new HttpResponseMessage();
         }, shortTimeoutMs: 100);
 
-        var ex = await Assert.ThrowsAsync<DockerUnavailableException>(() => client.ListImagesAsync(default));
+        var ex = await Assert.ThrowsAsync<DockerUnavailableException>(() => client.ListImagesAsync(TestContext.Current.CancellationToken));
 
         Assert.Contains("did not answer within", ex.Message);
         Assert.Contains("Is Docker Desktop still starting?", ex.Message);
@@ -89,7 +89,7 @@ public class DockerClientTests
     {
         using var client = Client((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
 
-        Assert.Null(await client.GetImageInfoAsync("nothing:latest", default));
+        Assert.Null(await client.GetImageInfoAsync("nothing:latest", TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public class DockerClientTests
     {
         using var client = Client((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetVersionAsync(default));
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetVersionAsync(TestContext.Current.CancellationToken));
 
         Assert.Equal(HttpStatusCode.InternalServerError, ex.StatusCode);
     }
@@ -111,10 +111,10 @@ public class DockerClientTests
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("tar") };
         }, shortTimeoutMs: 50);
 
-        await using var tar = await client.SaveImageAsync("demo:latest", default);
+        await using var tar = await client.SaveImageAsync("demo:latest", TestContext.Current.CancellationToken);
         using var reader = new StreamReader(tar);
 
-        Assert.Equal("tar", await reader.ReadToEndAsync());
+        Assert.Equal("tar", await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public class DockerClientTests
     {
         using var client = Client((_, _) => Task.FromResult(Json("""{"Version":"29.9.3","ApiVersion":"1.52"}""")));
 
-        Assert.Equal("29.9.3", await client.GetVersionAsync(default));
+        Assert.Equal("29.9.3", await client.GetVersionAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class DockerClientTests
             ]
             """)));
 
-        var images = await client.ListImagesAsync(default);
+        var images = await client.ListImagesAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(["sha256:c", "sha256:a"], images.Select(i => i.Id));
         Assert.Equal(["new:latest", "new:v2"], images[0].Tags);
