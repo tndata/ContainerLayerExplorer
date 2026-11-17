@@ -18,7 +18,7 @@ When I teach containers, one challenge is to present image building in an intuit
 - **A matrix of paths and layers.** One row per file or folder, one column per layer. Each cell says if the layer added (A), changed (M) or deleted (D) that path.
 - **How deletions work.** A deleted file is only hidden by a whiteout marker in a later layer. The file is still in the layer below, so the image does not get smaller. The tool shows that.
 - **File contents.** Click a cell to see what the layer did to that path and, for a text file, its content in that layer.
-- **The build steps.** Each layer column shows the Dockerfile step behind it and the layer size. Click the column header for the full command and the steps that make no layer, such as `ENV` and `CMD`.
+- **The build steps.** Each layer column shows the Dockerfile step behind it. Click the column header for the full command and the steps that make no layer, such as `ENV` and `CMD`.
 - **Large images.** The folders directly under `/` start collapsed into one summary row each, with the number of paths and what each layer adds, changes or deletes in them. Expand what you want to look at. A filter box narrows the paths.
 - **A start page.** It lists the images in your local Docker, updates live, and shows a message when Docker is not running.
 

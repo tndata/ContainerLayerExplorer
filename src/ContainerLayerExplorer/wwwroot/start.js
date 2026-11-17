@@ -106,10 +106,6 @@ function select(tag) {
 
 function updateSelection() {
   for (const tr of $("images").querySelectorAll("tbody tr")) tr.classList.toggle("selected", tr.dataset.tag === state.selected);
-  const explore = $("explore");
-  const enabled = state.selected !== null;
-  explore.href = enabled ? explorerUrl(state.selected) : "#";
-  explore.setAttribute("aria-disabled", String(!enabled));
 }
 
 function neighbour(row, key) {

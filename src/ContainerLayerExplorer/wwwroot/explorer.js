@@ -251,18 +251,16 @@ function subtreeRows(node) {
 function render() {
   const { model } = state.current;
   $("summary").hidden = false;
-  renderSizes(model);
+  renderImageInfo(model);
   renderMatrix();
 }
 
-function renderSizes(model) {
-  const hidden = model.totalSize - model.visibleSize;
-  $("sizes").innerHTML =
-    `<span class="imageid" title="${esc(state.current.id)}">Image ID <code>${shortId(state.current.id)}</code></span> ` +
-    `Files stored in the image: <b>${fmtSize(model.totalSize)}</b> in ${model.layers.length} layer${model.layers.length === 1 ? "" : "s"}. ` +
-    `The container sees: <b>${fmtSize(model.visibleSize)}</b>.` +
-    (hidden > 0 ? ` <span class="hidden-size">Stored but hidden or overwritten: <b>${fmtSize(hidden)}</b>.</span>` : "") +
-    (model.truncated ? ` <span class="hidden-size">Too many files: only the first part is shown.</span>` : "");
+/** Above the matrix: only the image ID (it changes when a rebuild makes a new image) and a warning for a cut-off image.
+ *  Sizes are not the point of the matrix; they are in the side panels. */
+function renderImageInfo(model) {
+  $("image-info").innerHTML =
+    `<span class="imageid" title="${esc(state.current.id)}">Image ID <code>${shortId(state.current.id)}</code></span>` +
+    (model.truncated ? ` <span class="warning">Too many files: only the first part is shown.</span>` : "");
 }
 
 function renderMatrix() {
@@ -283,11 +281,11 @@ function renderMatrix() {
     const isNew = prevSet && !prevSet.has(layer.diffId);
     const badge = isNew ? `<span class="badge new">new</span>` : "";
     const tip = [layer.createdBy ?? "", `Layer digest: ${layer.diffId}`, buildNote(layer, prevSet),
-      `Size: file bytes. docker history shows the space on disk, which is bigger.`, "Click for the details."].filter(Boolean).join("&#10;");
+      "Click for the details."].filter(Boolean).join("&#10;");
     head += `<th class="layerhead clickable" data-layer="${layer.index}" tabindex="0" title="${esc(tip).replaceAll("&amp;#10;", "&#10;")}">` +
       `<div><span class="n">${layer.index + 1}</span>${badge}</div>` +
       `<div class="cmdline">${esc(shortCmd(layer.createdBy ?? ""))}</div>` +
-      `<div class="size">${fmtSize(layer.size)} <code class="digest">${shortId(layer.diffId)}</code></div></th>`;
+      `<div class="digestline"><code class="digest">${shortId(layer.diffId)}</code></div></th>`;
   }
   head += `<th class="seescol" title="What a container started from this image sees. ✓ = the container gets this file.">Result</th></tr></thead>`;
 
@@ -440,7 +438,7 @@ function showLayer(index) {
   const first = index === 0 ? stepsWithoutLayerBeforeFirst(model.history) : [];
 
   $("panel-body").innerHTML = `<h2>Layer ${index + 1}</h2>` +
-    `<div class="meta">${fmtSize(layer.size)} of files. Digest <code>${esc(layer.diffId)}</code></div>` +
+    `<div class="meta">${fmtSize(layer.size)} of files (docker history shows the space on disk, which is bigger). Digest <code>${esc(layer.diffId)}</code></div>` +
     (note ? `<p class="what">${esc(note)}</p>` : "") +
     stepList("Steps before this layer that make no layer of their own", first) +
     `<p class="what">The build step:</p><pre>${esc(layer.createdBy ?? "(not recorded)")}</pre>` +
