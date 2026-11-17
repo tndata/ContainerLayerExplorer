@@ -41,7 +41,8 @@
       <ol id="steps" class="steps" aria-label="Dockerfile steps"></ol>
     </section>
     <div id="matrix-wrap" class="matrix-wrap" hidden>
-      <table id="matrix" class="matrix"></table>
+      <!-- app.js replaces the whole table content with one column per layer when an image is shown -->
+      <table id="matrix" class="matrix"><thead><tr><th scope="col" class="pathcol">Path</th></tr></thead><tbody></tbody></table>
     </div>
   </main>
 

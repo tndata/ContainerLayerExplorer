@@ -51,7 +51,7 @@ public sealed class CacheFolder : IDisposable
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                logger.LogWarning("Could not remove the old folder {Dir}: {Message}", dir, ex.Message);
+                logger.LogWarning(ex, "Could not remove the old folder {Dir}", dir);
             }
         }
     }
@@ -88,7 +88,7 @@ public sealed class CacheFolder : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning("Could not delete {Dir}: {Message}", Path, ex.Message);
+            _logger.LogWarning(ex, "Could not delete {Dir}", Path);
         }
     }
 }

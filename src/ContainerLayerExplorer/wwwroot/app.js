@@ -36,7 +36,7 @@ async function init() {
 
 async function refresh(force) {
   const status = await getJson("/api/status");
-  if (!status || !status.connected) {
+  if (!status?.connected) {
     showMessage(status?.error ?? "Cannot reach the Container Layer Explorer server.", true);
     return;
   }
@@ -83,8 +83,8 @@ async function selectImage(name) {
   render();
   if (state.selected?.layer === "result") {
     const sees = state.rows.get(state.selected.path)?.sees;
-    if (sees) showCell(state.selected.path, sees.layer, true); else closePanel();
-  } else if (state.selected) showCell(state.selected.path, state.selected.layer);
+    if (sees) await showCell(state.selected.path, sees.layer, true); else closePanel();
+  } else if (state.selected) await showCell(state.selected.path, state.selected.layer);
 }
 
 // ---------- data shaping ----------
@@ -237,8 +237,10 @@ function renderMatrix() {
     // Only changed layers get a badge: no badge means "same as the previous build".
     const isNew = prevSet && !prevSet.has(layer.diffId);
     const badge = isNew ? `<span class="badge new">new</span>` : "";
-    const tip = [layer.createdBy ?? "", `Layer digest: ${layer.diffId}`,
-      isNew ? "NEW: not in your previous build." : prevSet ? "Same as in your previous build (docker build shows CACHED)." : "",
+    let buildNote = "";
+    if (isNew) buildNote = "NEW: not in your previous build.";
+    else if (prevSet) buildNote = "Same as in your previous build (docker build shows CACHED).";
+    const tip = [layer.createdBy ?? "", `Layer digest: ${layer.diffId}`, buildNote,
       `Size: file bytes. docker history shows the space on disk, which is bigger.`].filter(Boolean).join("&#10;");
     head += `<th class="layerhead" title="${esc(tip).replace(/&amp;#10;/g, "&#10;")}">` +
       `<div><span class="n">${layer.index + 1}</span>${badge}</div>` +
@@ -278,28 +280,37 @@ function renderLine(line, model) {
     const seen = rows.filter((r) => r.sees && r.sees.entry !== "Directory").length;
     // Number = files the container gets; a folder holding only folders still exists, so it gets a plain tick.
     const any = seen || rows.some((r) => r.sees);
-    return html + `<td class="sees${seen ? "" : " dir"}">${seen ? `&#10003; <span class="count">${seen}</span>` : any ? "&#10003;" : ""}</td></tr>`;
+    let seesCell = "";
+    if (seen) seesCell = `&#10003; <span class="count">${seen}</span>`;
+    else if (any) seesCell = "&#10003;";
+    return html + `<td class="sees${seen ? "" : " dir"}">${seesCell}</td></tr>`;
   }
 
   const row = line.type === "folder" ? line.node.row : line.row;
   const path = line.type === "folder" ? line.node.path : row.path;
   const isDir = row?.entry === "Directory" || line.type === "folder";
-  const label = line.type === "folder"
-    ? `<span class="toggle" data-path="${esc(path)}" data-open="true">&#9662; <span class="path">${esc(path)}/</span></span>`
-    : `<span class="path">${esc(path)}${isDir ? "/" : ""}</span>${row.entry === "Symlink" ? ` <span class="count">link</span>` : ""}`;
+  let label;
+  if (line.type === "folder") {
+    label = `<span class="toggle" data-path="${esc(path)}" data-open="true">&#9662; <span class="path">${esc(path)}/</span></span>`;
+  } else {
+    const linkNote = row.entry === "Symlink" ? ' <span class="count">link</span>' : "";
+    label = `<span class="path">${esc(path)}${isDir ? "/" : ""}</span>${linkNote}`;
+  }
   let html = `<tr data-path="${esc(path)}"><td class="pathcell${isDir ? " dirrow" : ""}" ${indent} title="${esc(path)}">${label}</td>`;
   for (const layer of model.layers) {
     // A folder is "modified" whenever something inside it changes: true, but noise. Show only A and D.
     let c = row && !row.hidden ? row.cells[layer.index] : null;
     if (c && isDir && c.kind === "Modified") c = null;
+    const dirClass = isDir ? " dir" : "";
     html += c
-      ? `<td class="c ${c.kind}${isDir ? " dir" : ""}" data-path="${esc(path)}" data-layer="${layer.index}">${c.kind[0]}</td>`
+      ? `<td class="c ${c.kind}${dirClass}" data-path="${esc(path)}" data-layer="${layer.index}">${c.kind[0]}</td>`
       : "<td></td>";
   }
   // A folder only implied by the files inside it has no entry of its own: present if anything inside is.
   const sees = row?.sees ?? (line.type === "folder" && subtreeRows(line.node).some((r) => r.sees));
   const clickable = !isDir && row?.sees;
-  return html + `<td class="sees${isDir ? " dir" : ""}${clickable ? " click" : ""}"${clickable ? ` data-path="${esc(path)}"` : ""}>${sees ? "&#10003;" : ""}</td></tr>`;
+  const dataPath = clickable ? ` data-path="${esc(path)}"` : "";
+  return html + `<td class="sees${isDir ? " dir" : ""}${clickable ? " click" : ""}"${dataPath}>${sees ? "&#10003;" : ""}</td></tr>`;
 }
 
 // ---------- detail panel ----------
@@ -315,39 +326,50 @@ async function showCell(path, layer, fromResult = false) {
   $("panel").hidden = false;
   const n = layer + 1;
   const earlier = lastVersionBefore(row, layer);
-  let html = `<h2 class="path">${esc(path)}</h2><div class="meta">Layer ${n}: ${esc(shortCmd(state.current.model.layers[layer].createdBy ?? ""))}</div>`;
+  const header = `<h2 class="path">${esc(path)}</h2><div class="meta">Layer ${n}: ${esc(shortCmd(state.current.model.layers[layer].createdBy ?? ""))}</div>`;
 
-  if (change.kind === "Deleted") {
-    html += change.whiteoutMarker
-      ? `<p class="what">Deleted in layer ${n}. The layer only holds a marker file, <code>${esc(change.whiteoutMarker)}</code>, that hides it.</p>`
-      : `<p class="what">Hidden in layer ${n}. ${esc(change.note ?? "")}</p>`;
-    html += earlier !== null
-      ? `<p class="what">The file is <b>not</b> gone from the image: its data is still stored in layer ${earlier + 1}. ` +
-        `<button type="button" class="link" data-show="${earlier}">Show it</button></p>`
-      : "";
-    body.innerHTML = html;
-  } else if (row.entry === "Directory") {
-    body.innerHTML = html + `<p class="what">Folder ${change.kind === "Added" ? "created" : "changed"} in layer ${n}.</p>`;
-  } else if (row.entry === "Symlink") {
-    body.innerHTML = html + `<p class="what">Symbolic link to <code>${esc(change.linkTarget ?? "?")}</code>.</p>`;
-  } else if (fromResult) {
-    html += `<p class="what">This is the version the container sees. It comes from layer ${n}.</p>` +
-      `<div data-content="${layer}">Loading...</div>`;
-    body.innerHTML = html;
-    await loadContent(path, layer);
-  } else {
-    // A cell shows what that layer stores; the older version is one click away.
-    html += change.kind === "Added"
-      ? `<p class="what">Added in layer ${n}.</p>`
-      : `<p class="what">Changed in layer ${n}. The layer stores the <b>whole</b> new file.</p>`;
-    html += `<div data-content="${layer}">Loading...</div>`;
-    if (change.kind === "Modified" && earlier !== null)
-      html += `<p class="what">The old version is still stored in layer ${earlier + 1}. ` +
-        `<button type="button" class="link" data-show="${earlier}">Show it</button></p>`;
-    body.innerHTML = html;
-    await loadContent(path, layer);
-  }
+  const view = describeChange(row, change, { n, layer, earlier, fromResult });
+  body.innerHTML = header + view.html;
+  if (view.loadsContent) await loadContent(path, layer);
   body.querySelectorAll("[data-show]").forEach((b) => b.addEventListener("click", () => showCell(path, Number(b.dataset.show))));
+}
+
+/** What the panel says about one change, and whether the file's content has to be fetched and shown below it. */
+function describeChange(row, change, { n, layer, earlier, fromResult }) {
+  if (change.kind === "Deleted") return { html: deletedHtml(change, n, earlier), loadsContent: false };
+  if (row.entry === "Directory") {
+    return { html: `<p class="what">Folder ${change.kind === "Added" ? "created" : "changed"} in layer ${n}.</p>`, loadsContent: false };
+  }
+  if (row.entry === "Symlink") {
+    return { html: `<p class="what">Symbolic link to <code>${esc(change.linkTarget ?? "?")}</code>.</p>`, loadsContent: false };
+  }
+  const loading = `<div data-content="${layer}">Loading...</div>`;
+  if (fromResult) {
+    return { html: `<p class="what">This is the version the container sees. It comes from layer ${n}.</p>` + loading, loadsContent: true };
+  }
+  // A cell shows what that layer stores; the older version is one click away.
+  let html = change.kind === "Added"
+    ? `<p class="what">Added in layer ${n}.</p>`
+    : `<p class="what">Changed in layer ${n}. The layer stores the <b>whole</b> new file.</p>`;
+  html += loading;
+  if (change.kind === "Modified" && earlier !== null) {
+    html += `<p class="what">The old version is still stored in layer ${earlier + 1}. ${showItButton(earlier)}</p>`;
+  }
+  return { html, loadsContent: true };
+}
+
+function deletedHtml(change, n, earlier) {
+  let html = change.whiteoutMarker
+    ? `<p class="what">Deleted in layer ${n}. The layer only holds a marker file, <code>${esc(change.whiteoutMarker)}</code>, that hides it.</p>`
+    : `<p class="what">Hidden in layer ${n}. ${esc(change.note ?? "")}</p>`;
+  if (earlier !== null) {
+    html += `<p class="what">The file is <b>not</b> gone from the image: its data is still stored in layer ${earlier + 1}. ${showItButton(earlier)}</p>`;
+  }
+  return html;
+}
+
+function showItButton(layerIndex) {
+  return `<button type="button" class="link" data-show="${layerIndex}">Show it</button>`;
 }
 
 async function loadContent(path, layer) {
@@ -366,7 +388,7 @@ function lastVersionBefore(row, layer) {
   for (let i = layer - 1; i >= 0; i--) {
     const c = row.cells[i];
     if (c && c.kind !== "Deleted") return i;
-    if (c && c.kind === "Deleted") return null;
+    if (c?.kind === "Deleted") return null;
   }
   return null;
 }
@@ -408,7 +430,10 @@ function hideMessage() { $("message").hidden = true; }
 
 /** "RUN /bin/sh -c echo hi # buildkit" -> "RUN echo hi" */
 function shortCmd(cmd) {
-  return cmd.replace(/\/bin\/sh -c (#\(nop\)\s*)?/, "").replace(/\s*# buildkit$/, "").trim();
+  const BUILDKIT = "# buildkit";   // a suffix check, not a regex: "\s*# buildkit$" backtracks badly on long runs of spaces
+  let text = cmd.replace(/\/bin\/sh -c (#\(nop\)\s*)?/, "").trimEnd();
+  if (text.endsWith(BUILDKIT)) text = text.slice(0, -BUILDKIT.length);
+  return text.trim();
 }
 
 // First 12 hex digits, the way docker images and docker history show IDs.
@@ -426,7 +451,11 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
 }
 
-const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+function cmp(a, b) {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
 
 async function copy(button) {
   try {
@@ -439,4 +468,4 @@ async function copy(button) {
 function readSetting(key) { try { return localStorage.getItem("cv." + key); } catch { return null; } }
 function writeSetting(key, value) { try { localStorage.setItem("cv." + key, value); } catch { /* private window */ } }
 
-init();
+init().catch((e) => showMessage(`Something went wrong in the page: ${e.message}`, true));

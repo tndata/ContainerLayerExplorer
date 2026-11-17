@@ -42,6 +42,6 @@ public static class ApiErrors
             logger.LogWarning("{Path} failed with {Status}: {Message}", context.Request.Path, status, message);
 
         context.Response.StatusCode = status;
-        await context.Response.WriteAsJsonAsync(new { error = message });
+        await context.Response.WriteAsJsonAsync(new { error = message }, context.RequestAborted);
     }
 }

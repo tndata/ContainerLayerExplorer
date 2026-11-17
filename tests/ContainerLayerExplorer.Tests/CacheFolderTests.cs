@@ -13,6 +13,7 @@ public class CacheFolderTests : IDisposable
     public void Dispose()
     {
         if (Directory.Exists(_base)) Directory.Delete(_base, recursive: true);
+        GC.SuppressFinalize(this);
     }
 
     private string MakeFolder(string name, TimeSpan age, bool withFile = true)

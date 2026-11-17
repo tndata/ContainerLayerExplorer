@@ -27,6 +27,12 @@ public sealed class DockerClient : IDisposable
 
     private const int ConnectTimeoutMs = 2000;
 
+    /// <summary>
+    /// <see cref="HttpClient"/> needs an address to build request paths from. The host name is never looked up and nothing
+    /// is sent to it: every connection goes through <see cref="ConnectAsync"/> to the local pipe or socket.
+    /// </summary>
+    private static readonly Uri PlaceholderAddress = new UriBuilder(Uri.UriSchemeHttp, "docker").Uri;
+
     private readonly HttpClient _http;
     private readonly DockerEndpoint? _endpoint;
     private readonly string? _configError;
@@ -56,7 +62,7 @@ public sealed class DockerClient : IDisposable
             _configError = ex.Message; // reported when Docker is first used, not at startup
         }
         handler ??= new SocketsHttpHandler { ConnectCallback = (_, ct) => ConnectAsync(_endpoint!, ct) };
-        _http = new HttpClient(handler) { BaseAddress = new Uri("http://docker/"), Timeout = Timeout.InfiniteTimeSpan };
+        _http = new HttpClient(handler) { BaseAddress = PlaceholderAddress, Timeout = Timeout.InfiniteTimeSpan };
     }
 
     private static string DetectEndpoint() => DockerEndpoint.Detect(
@@ -120,7 +126,8 @@ public sealed class DockerClient : IDisposable
         using var response = await SendAsync($"images/{Uri.EscapeDataString(name)}/json", _shortTimeout, ct);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
-        using var doc = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
         var root = doc.RootElement;
         var layers = root.TryGetProperty("RootFS", out var rootFs) && rootFs.TryGetProperty("Layers", out var l) && l.ValueKind == JsonValueKind.Array
             ? l.GetArrayLength()

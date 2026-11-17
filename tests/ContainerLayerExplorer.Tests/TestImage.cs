@@ -12,6 +12,11 @@ public sealed class TestImage : IDisposable
 {
     public enum Layout { Legacy, Oci, OciNestedWithAttestation, Both }
 
+    // Shared, never changed: the same values go into every image the tests build.
+    private static readonly string[] DefaultEnv = ["PATH=/bin"];
+    private static readonly string[] DefaultCmd = ["sh"];
+    private static readonly string[] DefaultRepoTags = ["test:latest"];
+
     private readonly List<(string CreatedBy, TestEntry[]? Entries)> _steps = [];
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "cle-tests", Guid.NewGuid().ToString("N"));
 
@@ -47,7 +52,7 @@ public sealed class TestImage : IDisposable
         {
             architecture = "amd64",
             os = "linux",
-            config = new { Env = new[] { "PATH=/bin" }, Cmd = new[] { "sh" }, WorkingDir = "/app" },
+            config = new { Env = DefaultEnv, Cmd = DefaultCmd, WorkingDir = "/app" },
             rootfs = new { type = "layers", diff_ids = diffIds },
             // Docker writes "history": null for a plain FROM scratch.
             history = _steps.Count == 0 ? null : _steps.Select(s => s.Entries is null
@@ -58,7 +63,7 @@ public sealed class TestImage : IDisposable
         if (layout is Layout.Legacy or Layout.Both)
         {
             object? layers = layerDigests.Count == 0 ? null : layerDigests.Select(BlobPath).ToList();
-            WriteFile("manifest.json", Json(new[] { new { Config = BlobPath(config), RepoTags = new[] { "test:latest" }, Layers = layers } }));
+            WriteFile("manifest.json", Json(new[] { new { Config = BlobPath(config), RepoTags = DefaultRepoTags, Layers = layers } }));
         }
         if (layout is not Layout.Legacy)
         {

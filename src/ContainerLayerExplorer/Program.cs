@@ -24,4 +24,4 @@ app.UseStaticFiles(new StaticFileOptions
 });
 app.MapApi();
 
-app.Run();
+await app.RunAsync();

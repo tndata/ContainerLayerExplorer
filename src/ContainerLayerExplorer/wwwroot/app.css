@@ -99,7 +99,7 @@ td.selcell { outline: 3px solid var(--accent); outline-offset: -3px; }
 .panel .close { position: absolute; right: 12px; top: 10px; font-size: 22px; border: none; }
 .panel h2 { font-size: 22px; margin: 0 2em 6px 0; word-break: break-all; }
 .panel .what { font-size: 19px; margin: 8px 0; }
-.panel pre { background: var(--head); padding: 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 50vh; overflow: auto; font-size: 16px; }
+.panel pre { background: var(--head); padding: 10px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; font-size: 16px; }
 .panel .meta { color: var(--muted); font-size: 15px; }
 .panel button.link { border: none; padding: 0; color: var(--accent); text-decoration: underline; background: none; }
 

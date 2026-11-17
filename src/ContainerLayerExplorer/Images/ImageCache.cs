@@ -108,7 +108,7 @@ public sealed class ImageCache : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning("Could not delete {Dir}: {Message}", dir, ex.Message);
+            _logger.LogWarning(ex, "Could not delete {Dir}", dir);
         }
     }
 

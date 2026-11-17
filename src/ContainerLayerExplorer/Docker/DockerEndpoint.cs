@@ -38,10 +38,12 @@ public sealed record DockerEndpoint(DockerEndpointKind Kind, string Address)
     {
         if (!string.IsNullOrEmpty(dockerHost)) return dockerHost;
         if (!isWindows) return "unix:///var/run/docker.sock";
-        foreach (var pipe in new[] { "dockerDesktopLinuxEngine", "docker_engine" })
-        {
-            if (pipeExists(pipe)) return $"npipe:////./pipe/{pipe}";
-        }
-        return "npipe:////./pipe/docker_engine";
+        var pipe = WindowsPipes.FirstOrDefault(pipeExists) ?? DefaultWindowsPipe;
+        return $"npipe:////./pipe/{pipe}";
     }
+
+    private const string DefaultWindowsPipe = "docker_engine";
+
+    // Docker Desktop's Linux engine first, then the default pipe.
+    private static readonly string[] WindowsPipes = ["dockerDesktopLinuxEngine", DefaultWindowsPipe];
 }
