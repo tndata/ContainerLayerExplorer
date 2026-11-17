@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Container Layer Explorer</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>Container Layer Explorer</h1>
+    <label class="picker">Image
+      <select id="image-select" aria-label="Image"></select>
+    </label>
+    <button id="refresh" type="button" title="Reload the image list and the selected image">Refresh</button>
+    <span id="live" class="live" title="Rebuilds of the selected image show up automatically">live</span>
+    <input id="filter" type="search" placeholder="Filter paths" aria-label="Filter paths">
+    <details class="help">
+      <summary>Commands</summary>
+      <div class="help-body">
+        <p>Build, then look here. The page follows the selected tag and updates by itself.</p>
+        <div class="cmd"><code>docker build -t demo .</code><button type="button" class="copy">Copy</button></div>
+        <div class="cmd"><code>docker history demo</code><button type="button" class="copy">Copy</button></div>
+        <div class="cmd"><code>docker run --rm -it demo sh</code><button type="button" class="copy">Copy</button></div>
+        <div class="cmd"><code>docker image save demo -o demo.tar</code><button type="button" class="copy">Copy</button></div>
+        <p class="legend">
+          <span class="c Added">A</span> added
+          <span class="c Modified">M</span> changed (whole file stored again)
+          <span class="c Deleted">D</span> deleted (hidden by a whiteout marker)
+        </p>
+      </div>
+    </details>
+    <span class="credit">&copy; <a href="https://tn-data.se" target="_blank" rel="noopener">TN-Datakonsult</a>
+      &middot; <a href="https://nestenius.se" target="_blank" rel="noopener">Blog</a></span>
+  </header>
+
+  <main>
+    <p id="message" class="message" hidden></p>
+    <section id="summary" class="summary" hidden>
+      <div id="sizes" class="sizes"></div>
+      <ol id="steps" class="steps" aria-label="Dockerfile steps"></ol>
+    </section>
+    <div id="matrix-wrap" class="matrix-wrap" hidden>
+      <table id="matrix" class="matrix"></table>
+    </div>
+  </main>
+
+  <aside id="panel" class="panel" hidden>
+    <button id="panel-close" type="button" class="close" aria-label="Close">×</button>
+    <div id="panel-body"></div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>

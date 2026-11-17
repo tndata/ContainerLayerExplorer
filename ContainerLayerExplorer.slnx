@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ContainerLayerExplorer.Core/ContainerLayerExplorer.Core.csproj" />
+    <Project Path="src/ContainerLayerExplorer/ContainerLayerExplorer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ContainerLayerExplorer.Tests/ContainerLayerExplorer.Tests.csproj" />
+  </Folder>
+</Solution>

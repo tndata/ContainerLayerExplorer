@@ -1,0 +1,98 @@
+name: SonarQube
+
+# Static analysis on SonarQube Cloud (project tndata_ContainerLayerExplorer, organisation tndata).
+# Build and test runs in build-and-test.yml, and CodeQL runs through GitHub's default setup.
+#
+# Until the repository secret SONAR_TOKEN exists, the analysis steps are skipped and the job is green,
+# so this file can be in the repository before the SonarQube Cloud project is set up.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Build and analyze
+    # SONAR_TOKEN is not available to pull requests from forks or Dependabot, so the analysis only runs
+    # on pushes and on pull requests from branches in this repository. Build and test runs for all of them.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      # A secret cannot be tested in a step condition directly, so the answer goes through an output
+      - name: Check that SONAR_TOKEN is set
+        id: token
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "SONAR_TOKEN is not set, so the SonarQube analysis is skipped."
+          fi
+
+      # The scanner needs Java
+      - name: Set up JDK 17
+        if: steps.token.outputs.present == 'true'
+        uses: actions/setup-java@v6
+        with:
+          java-version: 17
+          distribution: zulu
+
+      - name: Set up .NET 10
+        if: steps.token.outputs.present == 'true'
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # Full history, so SonarQube can tell new code from old
+      - uses: actions/checkout@v7
+        if: steps.token.outputs.present == 'true'
+        with:
+          fetch-depth: 0
+
+      - name: Cache SonarQube Cloud packages
+        if: steps.token.outputs.present == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache SonarQube Cloud scanner
+        id: cache-sonar-scanner
+        if: steps.token.outputs.present == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/scanner
+          key: ${{ runner.os }}-sonar-scanner
+          restore-keys: ${{ runner.os }}-sonar-scanner
+
+      - name: Install SonarQube Cloud scanner
+        if: steps.token.outputs.present == 'true' && steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "${{ runner.temp }}/scanner"
+          dotnet tool update dotnet-sonarscanner --tool-path "${{ runner.temp }}/scanner"
+
+      # The token is read from the environment, so it never appears in the command line.
+      # The page (JavaScript, CSS, HTML) is analysed too. It has no tests, so it is left out of the coverage figure.
+      - name: Build, test and analyze
+        if: steps.token.outputs.present == 'true'
+        run: |
+          "${{ runner.temp }}/scanner/dotnet-sonarscanner" begin \
+            /k:"tndata_ContainerLayerExplorer" \
+            /o:"tndata" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+            /d:sonar.coverage.exclusions="**/wwwroot/**"
+          dotnet build ContainerLayerExplorer.slnx --configuration Release
+          dotnet test ContainerLayerExplorer.slnx --no-build --configuration Release \
+            --collect:"XPlat Code Coverage" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+          "${{ runner.temp }}/scanner/dotnet-sonarscanner" end /d:sonar.token="$SONAR_TOKEN"
