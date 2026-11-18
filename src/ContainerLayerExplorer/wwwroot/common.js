@@ -52,8 +52,9 @@ export function debounce(fn, ms) {
 
 // ---------- the message bar ----------
 
-/** Shows a message in the bar under the header. With backLink, a link to the start page follows the text. */
-export function showMessage(text, { error = false, backLink = false } = {}) {
+/** Shows a message in the bar under the header. With backLink, a link to the start page follows the text.
+ *  With busy, a small spinner shows in front of the text (for work that takes a while, such as loading a large image). */
+export function showMessage(text, { error = false, backLink = false, busy = false } = {}) {
   const bar = $("message");
   bar.textContent = text;
   if (backLink) {
@@ -64,6 +65,7 @@ export function showMessage(text, { error = false, backLink = false } = {}) {
     bar.append(link);
   }
   bar.classList.toggle("error", error);
+  bar.classList.toggle("busy", busy);
   bar.hidden = false;
 }
 
@@ -76,6 +78,14 @@ export function setLive(on) { $("live")?.classList.toggle("on", on); }
 // First 12 hex digits, the way docker images and docker history show IDs.
 export function shortId(digest) {
   return (digest ?? "").replace(/^sha256:/, "").slice(0, 12);
+}
+
+/** "RUN /bin/sh -c echo hi # buildkit" -> "RUN echo hi" */
+export function shortCmd(cmd) {
+  const BUILDKIT = "# buildkit";   // a suffix check, not a regex: "\s*# buildkit$" backtracks badly on long runs of spaces
+  let text = cmd.replace(/\/bin\/sh -c (#\(nop\)\s*)?/, "").trimEnd();
+  if (text.endsWith(BUILDKIT)) text = text.slice(0, -BUILDKIT.length);
+  return text.trim();
 }
 
 export function fmtSize(n) {

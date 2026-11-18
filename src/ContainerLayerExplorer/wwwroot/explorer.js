@@ -1,9 +1,11 @@
 // Container Layer Explorer: the explorer page. It shows one image, the tag in the address (explorer.html?image=name),
-// and follows rebuilds of it. Talks only to /api (see Api/Endpoints.cs). No framework.
+// and follows rebuilds of it. Two views: the Stack (drawn by stack.js, shown first) and the Matrix (here).
+// Talks only to /api (see Api/Endpoints.cs). No framework.
 // Loaded as a module (explorer.html), so it is strict already and can use top-level await.
-import { $, debounce, esc, fmtSize, getJson, hideMessage, listenToDocker, setLive, shortId, showMessage, writeSetting } from "./common.js";
+import { $, debounce, esc, fmtSize, getJson, hideMessage, listenToDocker, setLive, shortCmd, shortId, showMessage, writeSetting } from "./common.js";
+import { renderStackView, selectStackImage } from "./stack.js";
 
-// Collapse rules (ADR 0004, changed in CLE-19). A folder starts collapsed when it sits directly under /, has more
+// Collapse rules. A folder starts collapsed when it sits directly under /, has more
 // than COLLAPSE_OVER changed paths below it, is in ALWAYS_COLLAPSE, or only the first (base) layer touches it.
 // Two exceptions stay open: the working directory (WORKDIR) and the folders on the way to it, and every folder of an
 // image with SMALL_IMAGE paths or fewer in total.
@@ -15,7 +17,9 @@ const MAX_INDENT_LEVELS = 8;   // deeper folders are indented no further, so a d
 
 const state = {
   name: new URLSearchParams(location.search).get("image"),
+  view: "stack",            // "stack" or "matrix"; an image always opens in the Stack view
   current: null,            // { id, name, model }
+  tags: [],                 // every tag of the image shown, from /api/images
   previous: new Map(),      // image name -> diff IDs of the build shown before (for the NEW badges)
   open: new Map(),          // folder path -> true (expanded) / false (collapsed), overrides the rules
   filter: "",
@@ -38,12 +42,15 @@ async function init() {
   $("refresh").addEventListener("click", () => refresh(true));
   $("filter").addEventListener("input", (e) => {
     state.filter = e.target.value.trim();
-    if (state.current) renderMatrix();
+    if (state.current && state.view === "matrix") renderMatrix();
   });
+  $("view-stack").addEventListener("click", () => setView("stack"));
+  $("view-matrix").addEventListener("click", () => setView("matrix"));
   $("panel-close").addEventListener("click", closePanel);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     closePanel();
+    if (state.view === "stack") selectStackImage();
     document.querySelector("details.help").open = false;   // Escape also closes the Help window
   });
   await refresh(false);
@@ -69,8 +76,13 @@ async function refresh(force) {
     updateMessage();
     return;
   }
+  const tagsChanged = found.tags.join(" ") !== state.tags.join(" ");
+  state.tags = found.tags;
   if (force || !state.current || state.current.id !== found.id) await selectImage();
-  else updateMessage();
+  else {
+    updateMessage();
+    if (tagsChanged && state.view === "stack") render();   // the Stack header lists the tags
+  }
 }
 
 function setProblem(message) {
@@ -83,7 +95,7 @@ function updateMessage() {
   if (state.problem) { showMessage(state.problem, { error: true }); return; }
   if (state.gone && !state.current) { showMessage(`There is no image tagged ${state.name}.`, { error: true, backLink: true }); return; }
   if (state.gone) { showMessage(`${state.name} no longer exists (removed or untagged). This is the last build seen.`, { backLink: true }); return; }
-  if (state.loading) { showMessage(`Loading ${state.name} ...`); return; }
+  if (state.loading) { showMessage(`Loading ${state.name} ...`, { busy: true }); return; }
   if (state.current?.model.layers.length === 0) { showMessage("This image is empty (it has no layers)."); return; }
   hideMessage();
 }
@@ -230,15 +242,36 @@ function subtreeRows(node) {
 
 // ---------- rendering ----------
 
+/** Shows the chosen view. The Stack is drawn by stack.js; the Matrix, its filter and its side panel live here. */
 function render() {
   const { model } = state.current;
-  $("summary").hidden = false;
+  const stack = state.view === "stack";
+  $("view-stack").setAttribute("aria-pressed", String(stack));
+  $("view-matrix").setAttribute("aria-pressed", String(!stack));
+  $("filter").hidden = stack;
+  $("summary").hidden = stack;
+  $("stack-view").hidden = !stack;
+  if (stack) {
+    $("matrix-wrap").hidden = true;
+    renderStackView(state.current, {
+      tags: state.tags,
+      previous: state.previous.get(state.current.name),
+    });
+    return;
+  }
   renderImageInfo(model);
   renderMatrix();
 }
 
+function setView(view) {
+  if (state.view === view) return;
+  state.view = view;
+  closePanel();   // the side panel belongs to the Matrix
+  if (state.current) render();
+}
+
 /** Above the matrix: only the image ID (it changes when a rebuild makes a new image) and a warning for a cut-off image.
- *  Sizes are not the point of the matrix; they are in the side panels. */
+ *  Sizes are not the point of the matrix: the image and layer sizes are in the Stack view. */
 function renderImageInfo(model) {
   $("image-info").innerHTML =
     `<span class="imageid" title="${esc(state.current.id)}">Image ID <code>${shortId(state.current.id)}</code></span>` +
@@ -415,12 +448,13 @@ function showLayer(index) {
   if (!layer) return;
   state.selected = null;
   markSelected();
+  document.querySelector(`#matrix th.layerhead[data-layer="${index}"]`)?.classList.add("selcol");
   const prev = state.previous.get(state.current.name);
   const note = buildNote(layer, prev ? new Set(prev) : null);
   const first = index === 0 ? stepsWithoutLayerBeforeFirst(model.history) : [];
 
   $("panel-body").innerHTML = `<h2>Layer ${index + 1}</h2>` +
-    `<div class="meta">${fmtSize(layer.size)} of files (docker history shows the space on disk, which is bigger). Digest <code>${esc(layer.diffId)}</code></div>` +
+    `<div class="meta">Digest <code>${esc(layer.diffId)}</code></div>` +
     (note ? `<p class="what">${esc(note)}</p>` : "") +
     stepList("Steps before this layer that make no layer of their own", first) +
     `<p class="what">The build step:</p><pre>${esc(layer.createdBy ?? "(not recorded)")}</pre>` +
@@ -515,6 +549,7 @@ function closePanel() {
 function markSelected() {
   document.querySelectorAll("tr.sel").forEach((tr) => tr.classList.remove("sel"));
   document.querySelectorAll("td.selcell").forEach((td) => td.classList.remove("selcell"));
+  document.querySelectorAll("th.selcol").forEach((th) => th.classList.remove("selcol"));
   if (!state.selected) return;
   document.querySelectorAll("#matrix tr[data-path]").forEach((tr) => {
     if (tr.dataset.path !== state.selected.path) return;
@@ -525,14 +560,6 @@ function markSelected() {
 }
 
 // ---------- helpers ----------
-
-/** "RUN /bin/sh -c echo hi # buildkit" -> "RUN echo hi" */
-function shortCmd(cmd) {
-  const BUILDKIT = "# buildkit";   // a suffix check, not a regex: "\s*# buildkit$" backtracks badly on long runs of spaces
-  let text = cmd.replace(/\/bin\/sh -c (#\(nop\)\s*)?/, "").trimEnd();
-  if (text.endsWith(BUILDKIT)) text = text.slice(0, -BUILDKIT.length);
-  return text.trim();
-}
 
 function cmp(a, b) {
   if (a < b) return -1;

@@ -44,9 +44,11 @@ public static class ImageReader
         var history = ReadHistory(config, layerPaths.Count);
 
         var stack = new LayerStack();
-        var (layers, truncated) = ReadLayers(files, layerPaths, diffIds, history, stack, options.MaxEntries);
+        var (read, truncated) = ReadLayers(files, layerPaths, diffIds, history, stack, options.MaxEntries);
 
         var visible = stack.Visible.OrderBy(v => v.Path, StringComparer.Ordinal).ToList();
+        var facts = LayerFacts.Compute(read, visible);
+        var layers = read.Select((l, i) => l with { Facts = facts[i] }).ToList();
         return new ImageModel(
             GetString(config, "os") ?? "",
             GetString(config, "architecture") ?? "",
@@ -56,7 +58,18 @@ public static class ImageReader
             visible,
             layers.Sum(l => l.Size),
             visible.Where(v => v.Entry == EntryKind.File).Sum(v => v.Size),
-            truncated);
+            truncated,
+            ReadTime(config, "created"),
+            NullIfEmpty(GetString(config, "author")));
+    }
+
+    /// <summary>"blobs/sha256/abc" -> "sha256:abc". Older archives name a layer "&lt;id&gt;/layer.tar", which is no digest.</summary>
+    private static string? BlobDigest(string blobPath)
+    {
+        var parts = blobPath.Split('/');
+        return parts.Length == 3 && parts[0] == "blobs" && parts[1].Length > 0 && parts[2].Length > 0
+            ? $"{parts[1]}:{parts[2]}"
+            : null;
     }
 
     /// <summary>
@@ -77,7 +90,7 @@ public static class ImageReader
             var size = entries.Where(e => e.Entry == EntryKind.File).Sum(e => e.Size);
             var createdBy = history.Find(h => h.LayerIndex == i)?.CreatedBy;
             layers.Add(new Layer(i, i < diffIds.Count ? diffIds[i] : "", layerPaths[i],
-                files.Length(layerPaths[i]), size, createdBy, changes));
+                files.Length(layerPaths[i]), size, createdBy, changes, BlobDigest(layerPaths[i])));
         }
         return (layers, truncated);
     }
@@ -166,7 +179,7 @@ public static class ImageReader
         {
             var empty = h.TryGetProperty("empty_layer", out var e) && e.ValueKind == JsonValueKind.True;
             int? layer = !empty && next < layerCount ? next++ : null;
-            DateTimeOffset? created = h.TryGetProperty("created", out var c) && c.TryGetDateTimeOffset(out var d) ? d : null;
+            var created = ReadTime(h, "created");
             var text = GetString(h, "created_by") ?? GetString(h, "comment") ?? "";
             steps.Add(new HistoryStep(text, created, empty, layer));
         }
@@ -176,14 +189,49 @@ public static class ImageReader
     private static ImageConfigSummary ReadConfigSummary(JsonElement config)
     {
         if (!config.TryGetProperty("config", out var c) || c.ValueKind != JsonValueKind.Object)
-            return new ImageConfigSummary([], [], [], null, null, []);
-        var ports = c.TryGetProperty("ExposedPorts", out var p) && p.ValueKind == JsonValueKind.Object
-            ? p.EnumerateObject().Select(x => x.Name).ToList()
-            : [];
+            return ImageConfigSummary.Empty;
         return new ImageConfigSummary(
             GetStrings(c, "Env"), GetStrings(c, "Cmd"), GetStrings(c, "Entrypoint"),
-            NullIfEmpty(GetString(c, "WorkingDir")), NullIfEmpty(GetString(c, "User")), ports);
+            NullIfEmpty(GetString(c, "WorkingDir")), NullIfEmpty(GetString(c, "User")), GetKeys(c, "ExposedPorts"),
+            ReadLabels(c), GetKeys(c, "Volumes"), ReadHealthCheck(c),
+            NullIfEmpty(GetString(c, "StopSignal")), GetStrings(c, "Shell"));
     }
+
+    /// <summary>Labels in key order. A label whose value is not a string (not valid, but seen) is kept as its JSON text.</summary>
+    private static SortedDictionary<string, string> ReadLabels(JsonElement c)
+    {
+        var labels = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        if (!c.TryGetProperty("Labels", out var l) || l.ValueKind != JsonValueKind.Object) return labels;
+        foreach (var p in l.EnumerateObject())
+            labels[p.Name] = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() ?? "" : p.Value.GetRawText();
+        return labels;
+    }
+
+    /// <summary>The HEALTHCHECK, or null when the image has none. Docker stores the durations in nanoseconds.</summary>
+    private static HealthCheck? ReadHealthCheck(JsonElement c)
+    {
+        if (!c.TryGetProperty("Healthcheck", out var h) || h.ValueKind != JsonValueKind.Object) return null;
+        var test = GetStrings(h, "Test");
+        if (test.Count == 0) return null;
+        return new HealthCheck(test, Nanoseconds(h, "Interval"), Nanoseconds(h, "Timeout"), Nanoseconds(h, "StartPeriod"),
+            h.TryGetProperty("Retries", out var r) && r.ValueKind == JsonValueKind.Number && r.TryGetInt32(out var n) && n > 0 ? n : null);
+    }
+
+    /// <summary>A duration in nanoseconds; 0 or missing means "the default", so null.</summary>
+    private static TimeSpan? Nanoseconds(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var ns) && ns > 0
+            ? TimeSpan.FromTicks(ns / 100)
+            : null;
+
+    private static DateTimeOffset? ReadTime(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+        && v.TryGetDateTimeOffset(out var d) ? d : null;
+
+    /// <summary>The names of an object such as ExposedPorts or Volumes (<c>{"80/tcp": {}}</c>).</summary>
+    private static List<string> GetKeys(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var o) && o.ValueKind == JsonValueKind.Object
+            ? o.EnumerateObject().Select(x => x.Name).ToList()
+            : [];
 
     private static string BlobPath(string digest)
     {

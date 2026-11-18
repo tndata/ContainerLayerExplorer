@@ -60,7 +60,7 @@ public sealed partial class ImageCache : IDisposable
             if (info.LayerCount == 0)
             {
                 // e.g. FROM scratch with nothing added yet. Docker refuses to save it ("empty export"), so skip the save.
-                model = new ImageModel(info.Os, info.Architecture, new ImageConfigSummary([], [], [], null, null, []),
+                model = new ImageModel(info.Os, info.Architecture, ImageConfigSummary.Empty,
                     [], [], [], 0, 0, false);
             }
             else

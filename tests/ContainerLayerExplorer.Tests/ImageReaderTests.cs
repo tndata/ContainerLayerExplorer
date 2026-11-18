@@ -180,6 +180,127 @@ public class ImageReaderTests
     }
 
     [Theory]
+    [InlineData(Layout.Legacy)]
+    [InlineData(Layout.Oci)]
+    public void Reads_the_image_created_time_and_author(Layout layout)
+    {
+        using var image = new TestImage
+        {
+            ImageFields = { ["created"] = "2026-11-05T07:17:53.714313256Z", ["author"] = "Example Maintainer <maintainer@example.com>" },
+        }.Layer("COPY a /", File("a", "a"));
+
+        var model = image.Read(layout);
+
+        // Nine digits of fractions, as real images have; .NET keeps seven.
+        Assert.Equal(new DateTimeOffset(2026, 11, 5, 7, 17, 53, TimeSpan.Zero).AddTicks(7_143_132), model.Created);
+        Assert.Equal(TimeSpan.Zero, model.Created!.Value.Offset);
+        Assert.Equal("Example Maintainer <maintainer@example.com>", model.Author);
+    }
+
+    [Fact]
+    public void Missing_or_odd_created_and_author_read_as_null()
+    {
+        using var plain = new TestImage().Layer("COPY a /", File("a", "a"));
+        using var odd = new TestImage { ImageFields = { ["created"] = 12345, ["author"] = "" } }.Layer("COPY a /", File("a", "a"));
+
+        var a = plain.Read();
+        var b = odd.Read();
+
+        Assert.Null(a.Created);
+        Assert.Null(a.Author);
+        Assert.Null(b.Created);
+        Assert.Null(b.Author);
+    }
+
+    [Fact]
+    public void Reads_labels_volumes_stop_signal_and_shell()
+    {
+        using var image = new TestImage
+        {
+            ConfigFields =
+            {
+                ["Labels"] = new Dictionary<string, object>
+                {
+                    ["org.opencontainers.image.version"] = "1.2.3",
+                    ["org.opencontainers.image.source"] = "https://example.com/repo",
+                    ["odd"] = 7,
+                },
+                ["Volumes"] = new Dictionary<string, object> { ["/data"] = new { }, ["/logs"] = new { } },
+                ["StopSignal"] = "SIGQUIT",
+                ["Shell"] = new[] { "/bin/bash", "-c" },
+                ["ExposedPorts"] = new Dictionary<string, object> { ["80/tcp"] = new { } },
+            },
+        }.Layer("COPY a /", File("a", "a"));
+
+        var config = image.Read().Config;
+
+        Assert.Equal(["odd", "org.opencontainers.image.source", "org.opencontainers.image.version"], config.Labels.Keys);
+        Assert.Equal("1.2.3", config.Labels["org.opencontainers.image.version"]);
+        Assert.Equal("7", config.Labels["odd"]);   // not a string in the JSON: kept as its JSON text
+        Assert.Equal(["/data", "/logs"], config.Volumes);
+        Assert.Equal("SIGQUIT", config.StopSignal);
+        Assert.Equal(["/bin/bash", "-c"], config.Shell);
+        Assert.Equal(["80/tcp"], config.ExposedPorts);
+        Assert.Null(config.Healthcheck);
+    }
+
+    [Fact]
+    public void An_image_without_these_settings_reads_as_empty()
+    {
+        using var image = new TestImage { ConfigFields = { ["Labels"] = null, ["Volumes"] = null } }.Layer("COPY a /", File("a", "a"));
+
+        var config = image.Read().Config;
+
+        Assert.Empty(config.Labels);
+        Assert.Empty(config.Volumes);
+        Assert.Empty(config.Shell);
+        Assert.Null(config.StopSignal);
+        Assert.Null(config.Healthcheck);
+    }
+
+    [Fact]
+    public void Reads_the_health_check_with_its_durations_in_nanoseconds()
+    {
+        using var image = new TestImage
+        {
+            ConfigFields =
+            {
+                ["Healthcheck"] = new Dictionary<string, object>
+                {
+                    ["Test"] = new[] { "CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1" },
+                    ["Interval"] = 30_000_000_000L,
+                    ["Timeout"] = 5_000_000_000L,
+                    ["StartPeriod"] = 0L,   // 0 means "the default"
+                    ["Retries"] = 3,
+                },
+            },
+        }.Layer("COPY a /", File("a", "a"));
+
+        var check = image.Read().Config.Healthcheck;
+
+        Assert.NotNull(check);
+        Assert.Equal(["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"], check.Test);
+        Assert.Equal(TimeSpan.FromSeconds(30), check.Interval);
+        Assert.Equal(TimeSpan.FromSeconds(5), check.Timeout);
+        Assert.Null(check.StartPeriod);
+        Assert.Equal(3, check.Retries);
+    }
+
+    [Fact]
+    public void A_health_check_turned_off_is_kept_as_NONE()
+    {
+        using var image = new TestImage { ConfigFields = { ["Healthcheck"] = new { Test = new[] { "NONE" } } } }
+            .Layer("COPY a /", File("a", "a"));
+
+        var check = image.Read().Config.Healthcheck;
+
+        Assert.NotNull(check);
+        Assert.Equal(["NONE"], check.Test);
+        Assert.Null(check.Interval);
+        Assert.Null(check.Retries);
+    }
+
+    [Theory]
     [InlineData("./etc/passwd", "/etc/passwd")]
     [InlineData("etc/", "/etc")]
     [InlineData("/x", "/x")]

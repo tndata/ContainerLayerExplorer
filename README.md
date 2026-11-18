@@ -13,6 +13,9 @@ When I teach containers, one challenge is to present image building in an intuit
 
 ## What it shows
 
+- **The image as a stack.** An image opens in the Stack view: the layers drawn bottom to top, the first build step at the bottom and the last on top, each with its build command, a short layer ID and its size. Thin 0 B rows are the steps that make no layer, such as `ENV` and `LABEL`. Above the stack are the image ID, creation time, platform, total size and how much stored data a container can no longer see because a later layer deleted or replaced it.
+- **What an image reveals.** With the image selected, the right side lists what anyone with a copy of the image can read from its config and manifest: creation time, build steps, author, labels, environment variables, user, ports, volumes, health check and more. Each row says where the fact comes from, and an empty row says what is missing.
+- **Layer details.** Click a layer in the stack to see its details instead: the build step and its time, both fingerprints (content and stored blob), the sizes and compression, what it adds, changes and deletes, its biggest files, how much of its data later layers hide, and permission facts such as setuid programs and world-writable folders. A step without a layer can be clicked too.
 - **Live update.** Build or rebuild an image and the page follows it. A layer that is new since your previous build gets a NEW badge, and the layers that came from the build cache do not.
 - **A matrix of paths and layers.** One row per file or folder, one column per layer. Each cell says if the layer added (A), changed (M) or deleted (D) that path.
 - **How deletions work.** A deleted file is only hidden by a whiteout marker in a later layer. The file is still in the layer below, so the image does not get smaller. The tool shows that.
@@ -51,7 +54,7 @@ When I teach containers, one challenge is to present image building in an intuit
    docker build -t demo .
    ```
 
-4. In the tool, pick `demo` and choose **Explore**. You see one layer with one file.
+4. In the tool, pick `demo` and choose **Explore**. The Stack view shows one layer; switch to **Matrix** to see its one file.
 
    ![The start page: Docker status and the list of local images](docs/images/start-page.png)
 
@@ -77,8 +80,8 @@ The folder [samples/busybox-basics](samples/busybox-basics) holds a small `FROM 
    docker build -t busybox-demo samples/busybox-basics
    ```
 
-2. In the tool, pick `busybox-demo` and choose **Explore**.
-3. Look at the `/src` folder:
+2. In the tool, pick `busybox-demo` and choose **Explore**. The Stack view shows the five layers, BusyBox at the bottom.
+3. Switch to **Matrix** and look at the `/src` folder:
    - `Hello1.txt` is added in layer 3 (A) and changed in layer 4 (M). Click the M cell: the layer stores the whole new file, and the old version is still stored in layer 3.
    - `Hello2.txt` is added in layer 3 and deleted in layer 5 (D). Click the D cell: the file is only hidden by a whiteout marker. Its data is still in layer 3, so the image did not get smaller.
 4. Edit the `Dockerfile`, for example add another `COPY` line, and run the same `docker build` command again. Keep the page open and it updates by itself, with a NEW badge on the new layer.

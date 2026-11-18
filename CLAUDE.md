@@ -4,7 +4,7 @@ A local web tool that shows the layers of a Docker/OCI image as a matrix: which 
 
 ## Layout
 
-- `src/ContainerLayerExplorer`: the web app. `Api/` (endpoints, error mapping, event stream), `Docker/` (Docker Engine API client over the named pipe or Unix socket), `Images/` (saving, unpacking, limits, cache folder), `wwwroot/` (`index.html` image list, `explorer.html` the matrix, ES modules, `app.css`).
+- `src/ContainerLayerExplorer`: the web app. `Api/` (endpoints, error mapping, event stream), `Docker/` (Docker Engine API client over the named pipe or Unix socket), `Images/` (saving, unpacking, limits, cache folder), `wwwroot/` (`index.html` image list, `explorer.html` the Stack and Matrix views of one image, ES modules with `stack.js` for the Stack, `app.css`).
 - `src/ContainerLayerExplorer.Core`: reads an unpacked image into the layer model. No web or Docker code.
 - `tests/ContainerLayerExplorer.Tests`: xunit v3 tests. They need no Docker.
 

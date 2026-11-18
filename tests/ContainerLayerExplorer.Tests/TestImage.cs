@@ -22,6 +22,15 @@ public sealed class TestImage : IDisposable
 
     public bool Gzip { get; init; } = true;
 
+    /// <summary>Extra top-level fields of the image config, such as <c>created</c> or <c>author</c>.</summary>
+    public Dictionary<string, object?> ImageFields { get; init; } = [];
+
+    /// <summary>Extra fields of the config's <c>config</c> object, such as <c>Labels</c> or <c>Healthcheck</c>.</summary>
+    public Dictionary<string, object?> ConfigFields { get; init; } = [];
+
+    /// <summary>The <c>created</c> time of each history step, in step order. Steps past the end get none.</summary>
+    public string[] StepTimes { get; init; } = [];
+
     /// <summary>The folder the image is written to, so a test can damage a file after <see cref="Write"/>.</summary>
     public string Folder => _dir;
 
@@ -29,6 +38,10 @@ public sealed class TestImage : IDisposable
     public TestImage EmptyStep(string createdBy) { _steps.Add((createdBy, null)); return this; }
 
     public static TestEntry File(string name, string content) => new(name, TarEntryType.RegularFile, content);
+    public static TestEntry File(string name, string content, int octalMode) =>
+        new(name, TarEntryType.RegularFile, content, Mode: (UnixFileMode)Convert.ToInt32(octalMode.ToString(), 8));
+    public static TestEntry Dir(string name, int octalMode) =>
+        new(name, TarEntryType.Directory, null, Mode: (UnixFileMode)Convert.ToInt32(octalMode.ToString(), 8));
     public static TestEntry Dir(string name) => new(name, TarEntryType.Directory, null);
     public static TestEntry Symlink(string name, string target) => new(name, TarEntryType.SymbolicLink, null, target);
     public static TestEntry Whiteout(string dir, string name) => File(dir.TrimEnd('/') + "/.wh." + name, "");
@@ -48,17 +61,25 @@ public sealed class TestImage : IDisposable
             layerDigests.Add(WriteBlob(Gzip ? Compress(tar) : tar));
         }
 
-        var config = WriteBlob(Json(new
+        var runConfig = new Dictionary<string, object?> { ["Env"] = DefaultEnv, ["Cmd"] = DefaultCmd, ["WorkingDir"] = "/app" };
+        foreach (var (key, value) in ConfigFields) runConfig[key] = value;
+        var imageConfig = new Dictionary<string, object?>
         {
-            architecture = "amd64",
-            os = "linux",
-            config = new { Env = DefaultEnv, Cmd = DefaultCmd, WorkingDir = "/app" },
-            rootfs = new { type = "layers", diff_ids = diffIds },
+            ["architecture"] = "amd64",
+            ["os"] = "linux",
+            ["config"] = runConfig,
+            ["rootfs"] = new { type = "layers", diff_ids = diffIds },
             // Docker writes "history": null for a plain FROM scratch.
-            history = _steps.Count == 0 ? null : _steps.Select(s => s.Entries is null
-                ? (object)new { created_by = s.CreatedBy, empty_layer = true }
-                : new { created_by = s.CreatedBy }),
-        }));
+            ["history"] = _steps.Count == 0 ? null : _steps.Select((s, i) =>
+            {
+                var step = new Dictionary<string, object> { ["created_by"] = s.CreatedBy };
+                if (s.Entries is null) step["empty_layer"] = true;
+                if (i < StepTimes.Length) step["created"] = StepTimes[i];
+                return step;
+            }),
+        };
+        foreach (var (key, value) in ImageFields) imageConfig[key] = value;
+        var config = WriteBlob(Json(imageConfig));
 
         if (layout is Layout.Legacy or Layout.Both)
         {
@@ -110,7 +131,7 @@ public sealed class TestImage : IDisposable
         {
             foreach (var e in entries)
             {
-                var entry = new PaxTarEntry(e.Type, e.Name) { Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite };
+                var entry = new PaxTarEntry(e.Type, e.Name) { Mode = e.Mode ?? (UnixFileMode.UserRead | UnixFileMode.UserWrite) };
                 if (e.LinkTarget is not null) entry.LinkName = e.LinkTarget;
                 if (e.Content is not null) entry.DataStream = new MemoryStream(Encoding.UTF8.GetBytes(e.Content));
                 writer.WriteEntry(entry);
@@ -139,4 +160,4 @@ public sealed class TestImage : IDisposable
     private static byte[] Json(object o) => JsonSerializer.SerializeToUtf8Bytes(o);
 }
 
-public sealed record TestEntry(string Name, TarEntryType Type, string? Content, string? LinkTarget = null);
+public sealed record TestEntry(string Name, TarEntryType Type, string? Content, string? LinkTarget = null, UnixFileMode? Mode = null);
