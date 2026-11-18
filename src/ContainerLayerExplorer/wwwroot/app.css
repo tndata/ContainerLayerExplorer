@@ -151,7 +151,7 @@ td.selcell { outline: 3px solid var(--accent); outline-offset: -3px; }
 .stack-layer .lid code { font-size: 13px; color: var(--muted); }
 .stack-layer .sizes { font-size: 13px; color: var(--muted); text-align: right; white-space: nowrap; }
 .stack-step { display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 12px; align-items: center; padding: 1px 12px;
-  border: 1px dashed var(--line); border-radius: 4px; color: var(--muted); font-size: 13px; }
+  border: 1px dashed var(--line); border-radius: 4px; color: var(--muted); font-size: 13px; cursor: pointer; }
 .stack-step .zero { font-size: 12px; }
 .stack-step .cmd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -161,7 +161,6 @@ td.selcell { outline: 3px solid var(--accent); outline-offset: -3px; }
 .image-box-title { margin: 0 0 10px; font-size: 19px; }
 .image-box-title:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .image-box .note { margin: 10px 0 0; }
-.stack-step { cursor: pointer; }
 .stack-step:hover, .stack-step:focus-visible { border-color: var(--accent); }
 .stack-layer.selected { background: var(--accent); border-color: var(--accent); color: #fff; outline: 3px solid var(--fg); outline-offset: 2px; }
 .stack-layer.selected .lid code, .stack-layer.selected .sizes { color: #fff; }
