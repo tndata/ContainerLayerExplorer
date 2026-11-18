@@ -11,10 +11,11 @@
     <a class="back" href="/" title="Back to the list of images">&larr; Images</a>
     <h1>Container Layer Explorer</h1>
     <span id="image-name" class="imagename"></span>
-    <div class="viewswitch" role="group" aria-label="View">
+    <fieldset class="viewswitch">
+      <legend class="sr-only">View</legend>
       <button id="view-stack" type="button" aria-pressed="false" title="The image as a stack of layers, and what the image reveals">Stack</button>
       <button id="view-matrix" type="button" aria-pressed="true" title="Paths and layers: what each layer adds, changes or deletes">Matrix</button>
-    </div>
+    </fieldset>
     <button id="refresh" type="button" title="Reload the image">Refresh</button>
     <span id="live" class="live" title="Rebuilds of this image show up automatically">live</span>
     <input id="filter" type="search" placeholder="Filter paths" aria-label="Filter paths" hidden>

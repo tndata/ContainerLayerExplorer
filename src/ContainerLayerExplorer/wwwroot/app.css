@@ -120,9 +120,9 @@ td.selcell { outline: 3px solid var(--accent); outline-offset: -3px; }
 }
 
 /* ---------- the explorer page: Stack | Matrix switch and the Stack view ---------- */
-.viewswitch { display: inline-flex; }
+.viewswitch { display: inline-flex; border: 0; padding: 0; margin: 0; min-width: 0; }   /* a fieldset, without its default frame */
 .viewswitch button { border-radius: 0; }
-.viewswitch button:first-child { border-radius: 6px 0 0 6px; }
+.viewswitch button:first-of-type { border-radius: 6px 0 0 6px; }
 .viewswitch button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
 .viewswitch button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 

@@ -80,8 +80,10 @@ function headerHtml(image, tags) {
   const emptySteps = model.history.filter((s) => s.layerIndex === null).length;
   const platform = [model.os, model.architecture].filter(Boolean).join("/") || "not recorded";
   const tagList = (tags.length ? tags : [image.name]).map((t) => `<code class="tag">${esc(t)}</code>`).join(" ");
-  const fact = (label, value, tip = "") =>
-    `<div class="fact"${tip ? ` title="${esc(tip)}"` : ""}><dt>${label}</dt><dd>${value}</dd></div>`;
+  const fact = (label, value, tip = "") => {
+    const titleAttr = tip ? ` title="${esc(tip)}"` : "";
+    return `<div class="fact"${titleAttr}><dt>${label}</dt><dd>${value}</dd></div>`;
+  };
 
   return `<h2>${esc(image.name)}</h2>` +
     `<div class="tags">Tags: ${tagList}</div>` +
@@ -146,21 +148,28 @@ function emptyStepHtml(step, at) {
  * The wording stays neutral: it says what is there, not whether it is good or bad.
  */
 function revealsHtml(model) {
-  const c = model.config;
+  const rows = [
+    ...buildRevealRows(model),
+    ...startRevealRows(model.config),
+    ...runtimeRevealRows(model.config),
+    ...layerRevealRows(model),
+  ];
+  return `<h2>What this image reveals</h2>` +
+    `<p class="note">Read from the image config and manifest. Anyone who has a copy of the image can read the same. Hover over a row, or click ?, to see why it matters.</p>` +
+    `<div class="reveal-rows">${rows.join("")}</div>`;
+}
+
+/** How the image was built and by whom: created, build steps, build times, author and labels. */
+function buildRevealRows(model) {
   const steps = model.history;
   const dates = steps.map((s) => s.created).filter(Boolean).sort();
-  const buildkit = steps.filter((s) => (s.createdBy ?? "").trimEnd().endsWith("# buildkit")).length;
-  const compressed = model.layers.reduce((sum, l) => sum + l.compressedSize, 0);
-  const labels = Object.entries(c.labels ?? {});
-
-  const rows = [
+  const labels = Object.entries(model.config.labels ?? {});
+  return [
     row("Created", "config", "created", model.created && esc(fmtTime(model.created)), "no creation time",
       "When the image was built, as the builder recorded it. Shown as stored, with its time zone offset."),
-    row("Build steps", "config", "history", steps.length && `${steps.length} steps, ${steps.filter((s) => s.layerIndex !== null).length} with a layer` +
-      (buildkit ? `, ${buildkit} marked <code># buildkit</code>` : ""), "no build history",
+    row("Build steps", "config", "history", steps.length && buildStepsHtml(steps), "no build history",
       "The Dockerfile instructions as they were run, with the full text of every RUN command. Anything typed on a RUN line, such as a password, can be read here. The Dockerfile itself is not stored."),
-    row("Build times", "config", "history[].created", dates.length &&
-      (dates[0] === dates[dates.length - 1] ? esc(fmtTime(dates[0])) : `${esc(fmtTime(dates[0]))} to ${esc(fmtTime(dates[dates.length - 1]))}`),
+    row("Build times", "config", "history[].created", dates.length && buildTimesHtml(dates),
       "no build times",
       "Each build step has its own time. Steps that come from a base image are often older than the steps of the image's own Dockerfile."),
     row("Author", "config", "author", model.author && esc(model.author), "no author",
@@ -168,6 +177,26 @@ function revealsHtml(model) {
     row("Labels", "config", "config.Labels", labels.length &&
       list(labels.map(([k, v]) => `${esc(k)} = ${esc(v)}`)), "no labels",
       "Whatever the image author chose to publish. The OCI keys org.opencontainers.image.* can name the source repository, the git commit, the version and the licence."),
+  ];
+}
+
+function buildStepsHtml(steps) {
+  const buildkit = steps.filter((s) => (s.createdBy ?? "").trimEnd().endsWith("# buildkit")).length;
+  const withLayer = steps.filter((s) => s.layerIndex !== null).length;
+  const buildkitNote = buildkit ? `, ${buildkit} marked <code># buildkit</code>` : "";
+  return `${steps.length} steps, ${withLayer} with a layer` + buildkitNote;
+}
+
+/** One time, or the first to the last when the steps differ. dates is sorted and not empty. */
+function buildTimesHtml(dates) {
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+  return first === last ? esc(fmtTime(first)) : `${esc(fmtTime(first))} to ${esc(fmtTime(last))}`;
+}
+
+/** What a container starts with: environment, entrypoint, command, working directory and user. */
+function startRevealRows(c) {
+  return [
     row("Environment", "config", "config.Env", c.env.length && list(c.env.map(esc)), "no environment variables",
       "Every ENV value is stored in the image config and travels with every copy of the image, including a value that was meant to be secret."),
     row("Entrypoint", "config", "config.Entrypoint", c.entrypoint.length && `<code>${esc(c.entrypoint.join(" "))}</code>`, "no entrypoint",
@@ -178,6 +207,12 @@ function revealsHtml(model) {
       "The folder the container starts in, set with WORKDIR. Often where the application's files are."),
     row("User", "config", "config.User", c.user && `<code>${esc(c.user)}</code>`, "not set (runs as root by default)",
       "The user the container runs as, set with USER. When it is not set, the processes run as root unless another user is given when the container starts."),
+  ];
+}
+
+/** How the container runs: exposed ports, volumes, health check, stop signal and shell. */
+function runtimeRevealRows(c) {
+  return [
     row("Exposed ports", "config", "config.ExposedPorts", c.exposedPorts.length && `<code>${esc(c.exposedPorts.join(", "))}</code>`, "no exposed ports",
       "The ports the author says the application listens on. EXPOSE documents a port; it does not open it."),
     row("Volumes", "config", "config.Volumes", c.volumes.length && `<code>${esc(c.volumes.join(", "))}</code>`, "no volumes",
@@ -188,6 +223,13 @@ function revealsHtml(model) {
       "The signal Docker sends to stop the container, set with STOPSIGNAL."),
     row("Shell", "config", "config.Shell", c.shell.length && `<code>${esc(c.shell.join(" "))}</code>`, "not set (the default shell)",
       "The shell used for the shell form of RUN, CMD and ENTRYPOINT, set with SHELL."),
+  ];
+}
+
+/** The platform and the layers: platform, layer fingerprints and stored layers. */
+function layerRevealRows(model) {
+  const compressed = model.layers.reduce((sum, l) => sum + l.compressedSize, 0);
+  return [
     row("Platform", "config", "os, architecture", [model.os, model.architecture].filter(Boolean).map(esc).join("/"), "not recorded",
       "The platform the image is built for. It names the target, not the computer that built the image."),
     row("Layer fingerprints", "config", "rootfs.diff_ids", model.layers.length && `${model.layers.length} content hashes`, "no layers",
@@ -195,9 +237,6 @@ function revealsHtml(model) {
     row("Stored layers", "manifest", "layers", model.layers.length && `${model.layers.length} layer blobs, ${fmtSize(compressed)}`, "no layers",
       "What is stored, and what is sent over the network when the image is pushed or pulled. Usually gzip compressed."),
   ];
-  return `<h2>What this image reveals</h2>` +
-    `<p class="note">Read from the image config and manifest. Anyone who has a copy of the image can read the same. Hover over a row, or click ?, to see why it matters.</p>` +
-    `<div class="reveal-rows">${rows.join("")}</div>`;
 }
 
 // ---------- a layer's details ----------
@@ -209,7 +248,7 @@ function layerDetailHtml(model, index, prevSet) {
   const step = at >= 0 ? model.history[at] : null;
   const f = layer.facts;
   const isNew = prevSet && !prevSet.has(layer.diffId);
-  const ratio = layer.size > 0 ? `${Math.round((layer.compressedSize * 100) / layer.size)}% of the file data` : "";
+  const newBadge = isNew ? ' <span class="badge new">new</span>' : "";
 
   const rows = [
     row("Build step", "config", "history[].created_by", (layer.createdBy ?? step?.createdBy) && `<pre>${esc(layer.createdBy ?? step.createdBy)}</pre>`,
@@ -220,17 +259,27 @@ function layerDetailHtml(model, index, prevSet) {
       "The hash of the layer's uncompressed content. The same layer has the same fingerprint in every image that contains it."),
     row("Blob digest", "manifest", "layers[].digest", layer.blobDigest && `<code>${esc(layer.blobDigest)}</code>`, "not recorded in this archive format",
       "The hash of the layer as stored and sent (usually gzip compressed). Registries and docker pull use this one."),
-    row("Stored size", "manifest", "layers[].size", `${fmtSize(layer.compressedSize)}${ratio ? ` <span class="sub">(${ratio})</span>` : ""}`, "",
+    row("Stored size", "manifest", "layers[].size", storedSizeHtml(layer), "",
       "What a push or pull of this layer transfers. The percentage compares it with the files' total size; tar headers make a tiny layer bigger than its files."),
     row("Size of files", "layer", "tar entries", `${fmtSize(layer.size)}`, "",
       "The files in this layer added up, uncompressed. Deleted files are only markers here: their data is in a lower layer."),
   ];
   if (f) rows.push(...layerFactRows(f));
-  return `<div class="detail-head"><h2>Layer ${index + 1} <span class="sub">of ${model.layers.length}</span>${isNew ? ` <span class="badge new">new</span>` : ""}</h2>` +
+  return `<div class="detail-head"><h2>Layer ${index + 1} <span class="sub">of ${model.layers.length}</span>${newBadge}</h2>` +
     `</div>` +
     `<p class="note">Facts from the image config, the manifest and the layer's file list. Hover over a row, or click ?, to see why it matters.</p>` +
     (model.truncated ? `<p class="warning">Too many files: only the first part of the image was read, so the counts may be too small.</p>` : "") +
     `<div class="reveal-rows">${rows.join("")}</div>`;
+}
+
+/** The stored (compressed) size, with how much of the file data it is when the layer has files. */
+function storedSizeHtml(layer) {
+  const stored = fmtSize(layer.compressedSize);
+  if (layer.size > 0) {
+    const ratio = `${Math.round((layer.compressedSize * 100) / layer.size)}% of the file data`;
+    return `${stored} <span class="sub">(${ratio})</span>`;
+  }
+  return stored;
 }
 
 function layerFactRows(f) {
@@ -247,8 +296,7 @@ function layerFactRows(f) {
       "Added and changed count files only; deleted counts every path that disappears, the contents of a deleted folder included. The size of a deleted file is the data still stored in the layer below it. A changed file is stored whole again. A deleted file is only hidden: a whiteout marker in this layer hides it, and its data stays in the layer below."),
     row("Entries", "layer", "tar entries", entries.length && entries.join(", "), "no entries",
       "What the layer's tar file holds besides the deletions. Folders show up whenever something inside them changes."),
-    row("Biggest files", "layer", "tar entries", f.biggest.length &&
-      `<ul class="values">${f.biggest.map((b) => `<li><code>${esc(b.path)}</code> <span class="sub">${fmtSize(b.size)}</span></li>`).join("")}</ul>`,
+    row("Biggest files", "layer", "tar entries", f.biggest.length && biggestHtml(f.biggest),
       "no files with content", "Where the size of this layer comes from."),
     row("Hidden by later layers", "layer", "tar entries of all layers", f.hiddenLaterFiles &&
       `${fmtSize(f.hiddenLaterSize)} in ${plural(f.hiddenLaterFiles, "file")}`, "none: a container sees every file of this layer",
@@ -288,9 +336,15 @@ function plural(n, one, many = one + "s") {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+function biggestHtml(files) {
+  const items = files.map((b) => `<li><code>${esc(b.path)}</code> <span class="sub">${fmtSize(b.size)}</span></li>`).join("");
+  return `<ul class="values">${items}</ul>`;
+}
+
 function modeList(items, count) {
   const more = count > items.length ? `<li class="sub">and ${count - items.length} more</li>` : "";
-  return `<ul class="values">${items.map((m) => `<li><code>${esc(m.path)}</code> <span class="sub">${octal(m.mode)}</span></li>`).join("")}${more}</ul>`;
+  const entries = items.map((m) => `<li><code>${esc(m.path)}</code> <span class="sub">${octal(m.mode)}</span></li>`).join("");
+  return `<ul class="values">${entries}${more}</ul>`;
 }
 
 /** 0o4755 -> "4755", 0o644 -> "0644", as ls and chmod write it. */
@@ -312,16 +366,18 @@ let rowCount = 0;
 function row(label, source, field, value, emptyText, why) {
   const id = `why-${++rowCount}`;
   const has = !!value;
+  const sourceTip = esc(`Read from ${SOURCES[source]}: ${field}`);
   return `<div class="reveal${has ? "" : " empty"}" title="${esc(why)}">` +
     `<div class="reveal-label">${label}</div>` +
     `<div class="reveal-value">${has ? value : esc(emptyText)}</div>` +
-    `<span class="source ${source}" title="${esc(`Read from ${SOURCES[source]}: ${field}`)}">${source}</span>` +
+    `<span class="source ${source}" title="${sourceTip}">${source}</span>` +
     `<button type="button" class="why" aria-expanded="false" aria-controls="${id}" aria-label="Why it matters: ${esc(label)}">?</button>` +
     `<p class="why-text" id="${id}" hidden>${esc(why)}</p></div>`;
 }
 
 function list(items) {
-  return `<ul class="values">${items.map((i) => `<li><code>${i}</code></li>`).join("")}</ul>`;
+  const entries = items.map((i) => `<li><code>${i}</code></li>`).join("");
+  return `<ul class="values">${entries}</ul>`;
 }
 
 function healthHtml(h) {
@@ -334,7 +390,8 @@ function healthHtml(h) {
     h.startPeriod && `start period ${fmtDuration(h.startPeriod)}`,
     h.retries && `${h.retries} retries`,
   ].filter(Boolean).join(", ");
-  return `<code>${esc(kind)} ${esc(command)}</code>${timing ? ` <span class="sub">(${esc(timing)})</span>` : ""}`;
+  const timingHtml = timing ? ` <span class="sub">(${esc(timing)})</span>` : "";
+  return `<code>${esc(kind)} ${esc(command)}</code>${timingHtml}`;
 }
 
 // ---------- formatting ----------
