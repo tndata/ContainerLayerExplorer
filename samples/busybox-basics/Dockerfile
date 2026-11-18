@@ -1,4 +1,4 @@
-FROM busybox
+FROM busybox:1.38.0-glibc
 
 # Layer 2: a working directory. Everything below goes into /src.
 WORKDIR /src

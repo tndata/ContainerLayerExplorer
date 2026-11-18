@@ -1,6 +1,6 @@
 # Container Layer Explorer
 
-A local web tool that shows the layers of a Docker/OCI image as a matrix: which files exist in which layer, and what each layer added, changed or deleted. A .NET 10 minimal API with a plain HTML, CSS and JavaScript front end. MIT licensed.
+A local web tool that shows the layers of a Docker/OCI image as a matrix and a stack: which files exist in which layer, and what each layer added, changed or deleted. A .NET 10 minimal API with a plain HTML, CSS and JavaScript front end. MIT licensed.
 
 ## Layout
 

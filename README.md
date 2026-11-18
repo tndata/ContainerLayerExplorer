@@ -3,9 +3,9 @@
 [![Build and test](https://github.com/tndata/ContainerLayerExplorer/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/tndata/ContainerLayerExplorer/actions/workflows/build-and-test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Container Layer Explorer is a local web tool for exploring Docker and OCI image layers. It shows which files each layer of a container image adds, changes or deletes, as a matrix of file paths and layers, and it updates automatically when you rebuild the image.
+Container Layer Explorer is a local web tool for exploring Docker and OCI image layers. It shows which files each layer of a container image adds, changes or deletes, as a matrix of file paths and layers, and it updates automatically when you rebuild the image. It also draws the image as a stack of layers and shows what the image config and manifest reveal.
 
-![The layer matrix of a small image: one column per layer, one row per path, with added and deleted cells and a Result column](docs/images/matrix.png)
+![The Matrix view of the sample image: one column per layer, one row per path, with added (A), changed (M) and deleted (D) cells and a Result column](docs/images/matrix.png)
 
 ## Why I built it
 
@@ -13,15 +13,21 @@ When I teach containers, one challenge is to present image building in an intuit
 
 ## What it shows
 
-- **The image as a stack.** An image opens in the Stack view: the layers drawn bottom to top, the first build step at the bottom and the last on top, each with its build command, a short layer ID and its size. Thin 0 B rows are the steps that make no layer, such as `ENV` and `LABEL`. Above the stack are the image ID, creation time, platform, total size and how much stored data a container can no longer see because a later layer deleted or replaced it.
-- **What an image reveals.** With the image selected, the right side lists what anyone with a copy of the image can read from its config and manifest: creation time, build steps, author, labels, environment variables, user, ports, volumes, health check and more. Each row says where the fact comes from, and an empty row says what is missing.
-- **Layer details.** Click a layer in the stack to see its details instead: the build step and its time, both fingerprints (content and stored blob), the sizes and compression, what it adds, changes and deletes, its biggest files, how much of its data later layers hide, and permission facts such as setuid programs and world-writable folders. A step without a layer can be clicked too.
-- **Live update.** Build or rebuild an image and the page follows it. A layer that is new since your previous build gets a NEW badge, and the layers that came from the build cache do not.
-- **A matrix of paths and layers.** One row per file or folder, one column per layer. Each cell says if the layer added (A), changed (M) or deleted (D) that path.
+- **A matrix of paths and layers.** An image opens in the Matrix view: one row per file or folder, one column per layer. Each cell says if the layer added (A), changed (M) or deleted (D) that path, and the Result column shows what a container gets.
 - **How deletions work.** A deleted file is only hidden by a whiteout marker in a later layer. The file is still in the layer below, so the image does not get smaller. The tool shows that.
 - **File contents.** Click a cell to see what the layer did to that path and, for a text file, its content in that layer.
 - **The build steps.** Each layer column shows the Dockerfile step behind it. Click the column header for the full command and the steps that make no layer, such as `ENV` and `CMD`.
 - **Large images.** The folders directly under `/` start collapsed into one summary row each, with the number of paths and what each layer adds, changes or deletes in them. Expand what you want to look at. A filter box narrows the paths.
+- **The image as a stack.** Switch to the Stack view to see the layers drawn bottom to top, the first build step at the bottom and the last on top, each with its build command, a short layer ID, its compressed size and the size of its files. Thin 0 B rows are the steps that make no layer, such as `ENV` and `LABEL`. Above the stack are the image's tags, image ID, creation time, platform, the number of layers and build steps, and the size of the files and of the stored, compressed layers.
+- **What an image reveals.** With the image selected, the right side lists what anyone with a copy of the image can read from its config and manifest: creation time, build steps, author, labels, environment variables, user, ports, volumes, health check and more. Each row says where the fact comes from, and an empty row says what is missing.
+
+  ![The Stack view of the sample image: the image facts at the top, the five layers drawn as a stack on the left, and what the image reveals on the right](docs/images/stack.png)
+
+- **Layer details.** Click a layer in the stack to see its details instead: the build step and its time, both fingerprints (content and stored blob), the sizes and compression, what it adds, changes and deletes, its biggest files, how much of its data later layers hide, and permission facts such as setuid programs and world-writable folders. A step without a layer can be clicked too.
+
+  ![The Stack view with layer 3 selected: its build step, fingerprints, sizes, changes and biggest files on the right](docs/images/stack-layer.png)
+
+- **Live update.** Build or rebuild an image and the page follows it. A layer that is new since your previous build gets a NEW badge, and the layers that came from the build cache do not.
 - **A start page.** It lists the images in your local Docker, updates live, and shows a message when Docker is not running.
 
 ## Requirements
@@ -54,7 +60,7 @@ When I teach containers, one challenge is to present image building in an intuit
    docker build -t demo .
    ```
 
-4. In the tool, pick `demo` and choose **Explore**. The Stack view shows one layer; switch to **Matrix** to see its one file.
+4. In the tool, pick `demo` and choose **Explore**. The Matrix view shows one layer column and its one file. Switch to **Stack** to see the same layer drawn as a stack.
 
    ![The start page: Docker status and the list of local images](docs/images/start-page.png)
 
@@ -72,7 +78,7 @@ The tests do not need Docker: `dotnet test`.
 
 ## Try the sample
 
-The folder [samples/busybox-basics](samples/busybox-basics) holds a small `FROM busybox` image that shows all three kinds of change: added, changed and deleted.
+The folder [samples/busybox-basics](samples/busybox-basics) holds a small image built on `busybox:1.38.0-glibc` that shows all three kinds of change: added, changed and deleted.
 
 1. With the tool running, build the sample from the folder of this repository. It makes an image called `busybox-demo`:
 
@@ -80,10 +86,10 @@ The folder [samples/busybox-basics](samples/busybox-basics) holds a small `FROM 
    docker build -t busybox-demo samples/busybox-basics
    ```
 
-2. In the tool, pick `busybox-demo` and choose **Explore**. The Stack view shows the five layers, BusyBox at the bottom.
-3. Switch to **Matrix** and look at the `/src` folder:
+2. In the tool, pick `busybox-demo` and choose **Explore**. The Matrix view shows the five layers as columns, BusyBox in layer 1. Look at the `/src` folder:
    - `Hello1.txt` is added in layer 3 (A) and changed in layer 4 (M). Click the M cell: the layer stores the whole new file, and the old version is still stored in layer 3.
    - `Hello2.txt` is added in layer 3 and deleted in layer 5 (D). Click the D cell: the file is only hidden by a whiteout marker. Its data is still in layer 3, so the image did not get smaller.
+3. Switch to **Stack** to see the same five layers drawn as a stack, BusyBox at the bottom, and what the image reveals. Click a layer for its details.
 4. Edit the `Dockerfile`, for example add another `COPY` line, and run the same `docker build` command again. Keep the page open and it updates by itself, with a NEW badge on the new layer.
 
 ## What was tested

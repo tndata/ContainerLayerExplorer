@@ -12,8 +12,8 @@
     <h1>Container Layer Explorer</h1>
     <span id="image-name" class="imagename"></span>
     <div class="viewswitch" role="group" aria-label="View">
-      <button id="view-stack" type="button" aria-pressed="true" title="The image as a stack of layers, and what the image reveals">Stack</button>
-      <button id="view-matrix" type="button" aria-pressed="false" title="Paths and layers: what each layer adds, changes or deletes">Matrix</button>
+      <button id="view-stack" type="button" aria-pressed="false" title="The image as a stack of layers, and what the image reveals">Stack</button>
+      <button id="view-matrix" type="button" aria-pressed="true" title="Paths and layers: what each layer adds, changes or deletes">Matrix</button>
     </div>
     <button id="refresh" type="button" title="Reload the image">Refresh</button>
     <span id="live" class="live" title="Rebuilds of this image show up automatically">live</span>
@@ -21,8 +21,8 @@
     <details class="help">
       <summary>Help</summary>
       <div class="help-body">
-        <p><b>Stack</b> draws the image as layers, the first build step at the bottom and the last on top. Thin 0 B rows are steps that make no layer, such as <code>ENV</code>. The right side shows what is selected: the image ("What this image reveals", what anyone who has the image can read from its config and manifest), a layer (its details) or a step. Escape goes back to the image.</p>
         <p><b>Matrix</b>: each column is a layer, and each row is a path. Click a cell to see the file, or a column header to see the layer.</p>
+        <p><b>Stack</b> draws the image as layers, the first build step at the bottom and the last on top. Thin 0 B rows are steps that make no layer, such as <code>ENV</code>. The right side shows what is selected: the image ("What this image reveals", what anyone who has the image can read from its config and manifest), a layer (its details) or a step. Escape goes back to the image.</p>
         <p>The page follows this image tag and updates by itself when you rebuild.</p>
         <ul class="legend">
           <li><span class="c Added">A</span> added</li>

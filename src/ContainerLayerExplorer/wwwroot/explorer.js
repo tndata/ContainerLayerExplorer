@@ -1,5 +1,5 @@
 // Container Layer Explorer: the explorer page. It shows one image, the tag in the address (explorer.html?image=name),
-// and follows rebuilds of it. Two views: the Stack (drawn by stack.js, shown first) and the Matrix (here).
+// and follows rebuilds of it. Two views: the Matrix (here, shown first) and the Stack (drawn by stack.js).
 // Talks only to /api (see Api/Endpoints.cs). No framework.
 // Loaded as a module (explorer.html), so it is strict already and can use top-level await.
 import { $, debounce, esc, fmtSize, getJson, hideMessage, listenToDocker, setLive, shortCmd, shortId, showMessage, writeSetting } from "./common.js";
@@ -17,7 +17,7 @@ const MAX_INDENT_LEVELS = 8;   // deeper folders are indented no further, so a d
 
 const state = {
   name: new URLSearchParams(location.search).get("image"),
-  view: "stack",            // "stack" or "matrix"; an image always opens in the Stack view
+  view: "matrix",           // "matrix" or "stack"; an image always opens in the Matrix view
   current: null,            // { id, name, model }
   tags: [],                 // every tag of the image shown, from /api/images
   previous: new Map(),      // image name -> diff IDs of the build shown before (for the NEW badges)
