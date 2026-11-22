@@ -18,7 +18,7 @@ dotnet test
 dotnet run --project src/ContainerLayerExplorer
 ```
 
-The tool then opens at http://localhost:5000.
+When the terminal shows `Now listening on: http://localhost:5000`, open that address in your browser.
 
 The tests do not need Docker. They run on Linux in GitHub Actions. The tool itself is only tested by hand with Docker Desktop on Windows, so say in your pull request what you tried it with.
 
