@@ -15,7 +15,7 @@ When I teach containers, I notice that developers use images every day, but the 
 - What happens when I delete a file in a later step?
 - What affects the final image size?
 
-I built Container Layer Explorer to make that visible, so you get a clear mental model of how the layers are stacked on top of each other and merged into the one file system that a container sees. This is the idea behind a union file system. I also use it in my own training, for example in my course [Introduction to Containers and Kubernetes](https://tn-data.se/courses/introduction-to-containers-and-kubernetes/).
+I built Container Layer Explorer to make that visible, so you get a clear mental model of how the layers are stacked on top of each other and merged into the one file system that a container sees. This is the idea behind a [union file system](https://docs.docker.com/engine/storage/drivers/). I also use it in my own training, for example in my course [Introduction to Containers and Kubernetes](https://tn-data.se/courses/introduction-to-containers-and-kubernetes/).
 
 ## Requirements
 
@@ -62,7 +62,7 @@ I have not tested other setups, such as Linux, macOS or other container engines.
 
 ## How it works
 
-Container Layer Explorer runs on your own computer, next to Docker Desktop, and works only with the images in your local Docker. You get an image there by building it from a Dockerfile or by pulling it from a registry, such as Docker Hub. The diagram below shows the general setup:
+Container Layer Explorer runs on your own computer, next to Docker Desktop, and works only with the images in your local container engine. You get an image there by building it from a Dockerfile or by pulling it from a registry, such as Docker Hub. The diagram below shows the general setup:
 
 ![Overview: a container registry, docker pull into Docker Desktop on your computer, the container image read by Container Layer Explorer, and the result shown in the browser at localhost](docs/images/container-layer-explorer-overview.png)
 
@@ -95,10 +95,9 @@ The screenshot at the top of this page shows the Matrix view of the sample image
 
   ![Layer 3 of the sample image selected in the Stack view, with its details on the right: build step, fingerprints, sizes, changes and its biggest files](docs/images/stack-layer.png)
 
-### In both views
+## Live update
 
-- **Live update.** While the explorer page is open, it follows its tag. When the tag points to a new image, for example after a rebuild, the page loads it, and each layer whose content digest was not in the image shown before gets a NEW badge. A layer with the same content as before gets no badge, whether Docker took it from the build cache or built it again with the same result. The badges only compare with what the open page showed: when you reload the page, they are gone.
-- **A start page.** It lists the tagged images in your local Docker, one row per tag, updates live, and shows a message when it cannot reach Docker.
+While the explorer page is open, it follows its tag. When the tag points to a new image, for example after a rebuild, the page loads it, and each layer whose content digest was not in the image shown before gets a NEW badge. A layer with the same content as before gets no badge, whether Docker took it from the build cache or built it again with the same result. The badges only compare with what the open page showed: when you reload the page, they are gone.
 
 ## Troubleshooting
 
@@ -145,13 +144,13 @@ You can change both values under `Limits` in `appsettings.json`. Start the tool 
 
 See [SECURITY.md](SECURITY.md) for how to report a security problem.
 
-## FAQ
+## Frequently asked questions
 
 ### What is the difference between Docker, container and OCI images?
 
 - **Container image** is the general term: an application and the file system it needs, packed as a stack of layers, plus the settings for starting it.
 - **Docker image** and **OCI image** are two closely related formats for container images. The [OCI Image Specification](https://github.com/opencontainers/image-spec) is the open standard from the [Open Container Initiative](https://opencontainers.org/). Docker's own format is described in the [Docker Image Manifest V2, Schema 2](https://distribution.github.io/distribution/spec/manifest-v2-2/) specification, and Docker donated its container format to the initiative as the starting point.
-- **What this tool opens:** both formats, as long as the image is in your local Docker. Images with zstd-compressed layers are not supported yet.
+- **What this tool opens:** both formats, as long as the image is in your local container engine. Images with zstd-compressed layers are not supported yet.
 
 ### Does the tool start or change my containers?
 
