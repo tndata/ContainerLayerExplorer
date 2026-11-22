@@ -45,6 +45,13 @@ public static class LayerReader
         return null;
     }
 
+    /// <summary>True when the layer blob starts with the gzip magic bytes. The stream position is left unchanged.</summary>
+    public static bool IsGzip(Stream layer)
+    {
+        Span<byte> magic = stackalloc byte[2];
+        return PeekBytes(layer, magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b;
+    }
+
     /// <summary>"./etc/passwd", "etc/", "/x" all become "/etc/passwd", "/etc", "/x". The root itself gives null.</summary>
     public static string? NormalizePath(string name)
     {

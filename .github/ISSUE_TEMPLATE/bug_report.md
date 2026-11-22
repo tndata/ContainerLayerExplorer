@@ -16,7 +16,7 @@ A short description of the problem, and what you expected instead.
 3. What did you see?
 
 **Your setup**
-- Docker Desktop version:
+- Docker engine and version (for example Docker Desktop 4.x, `docker version`):
 - Operating system:
 - Browser:
 - .NET SDK version (`dotnet --version`):

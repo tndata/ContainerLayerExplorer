@@ -30,7 +30,7 @@
           <li><span class="c Modified">M</span> changed (whole file stored again)</li>
           <li><span class="c Deleted">D</span> deleted (hidden by a whiteout marker)</li>
           <li><span class="tick">&#10003;</span> in the Result column: the container gets this file</li>
-          <li><span class="badge new">new</span> after a rebuild, a layer that was not in the build before (layers from the build cache get no badge)</li>
+          <li><span class="badge new">new</span> after a rebuild, a layer whose content was not in the image shown before. A layer with the same content gets no badge, whether it came from the build cache or was built again. A reload clears the badges.</li>
         </ul>
         <p><a href="https://github.com/tndata/ContainerLayerExplorer" target="_blank" rel="noopener">Documentation and issues on GitHub</a></p>
       </div>

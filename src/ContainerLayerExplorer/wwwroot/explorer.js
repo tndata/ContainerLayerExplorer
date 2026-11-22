@@ -412,8 +412,8 @@ function rowSeesCell(line, row, path, isDir) {
 function buildNote(layer, prevSet) {
   if (!prevSet) return "";
   return prevSet.has(layer.diffId)
-    ? "Same as in your previous build (docker build shows CACHED)."
-    : "NEW: not in your previous build.";
+    ? "Same content as in the image shown before."
+    : "NEW: this content was not in the image shown before.";
 }
 
 /** The steps without a layer (ENV, ARG, LABEL, CMD and so on) that come before the first layer. */

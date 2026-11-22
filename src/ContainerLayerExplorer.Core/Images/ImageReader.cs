@@ -89,8 +89,10 @@ public static class ImageReader
             var changes = stack.Apply(i, entries);
             var size = entries.Where(e => e.Entry == EntryKind.File).Sum(e => e.Size);
             var createdBy = history.Find(h => h.LayerIndex == i)?.CreatedBy;
+            bool gzip;
+            using (var blob = files.OpenRequired(layerPaths[i])) gzip = LayerReader.IsGzip(blob);
             layers.Add(new Layer(i, i < diffIds.Count ? diffIds[i] : "", layerPaths[i],
-                files.Length(layerPaths[i]), size, createdBy, changes, BlobDigest(layerPaths[i])));
+                files.Length(layerPaths[i]), size, createdBy, changes, BlobDigest(layerPaths[i]), StoredGzip: gzip));
         }
         return (layers, truncated);
     }

@@ -77,6 +77,17 @@ public class ImageReaderTests
         var model = image.Read();
 
         Assert.Equal(5, model.Layers[0].Size);
+        Assert.False(model.Layers[0].StoredGzip);
+    }
+
+    [Fact]
+    public void A_gzip_layer_is_marked_as_stored_compressed()
+    {
+        using var image = new TestImage().Layer("COPY a /", File("a.txt", "hello"));
+
+        var model = image.Read();
+
+        Assert.True(model.Layers[0].StoredGzip);
     }
 
     [Fact]

@@ -47,19 +47,21 @@ public sealed record HealthCheck(
 public sealed record HistoryStep(string CreatedBy, DateTimeOffset? Created, bool EmptyLayer, int? LayerIndex);
 
 /// <param name="Size">Sum of the file sizes in the layer (uncompressed).</param>
-/// <param name="CompressedSize">Size of the layer blob as stored (usually gzip).</param>
+/// <param name="StoredSize">Size of the layer blob in Docker's export, compressed or not (see <paramref name="StoredGzip"/>).</param>
 /// <param name="BlobDigest">The digest of the stored blob (what the manifest lists), or null when the archive does not say.</param>
 /// <param name="Facts">Counts, sizes and permission facts for the layer.</param>
+/// <param name="StoredGzip">True when the blob in the export is gzip compressed; false for a plain tar.</param>
 public sealed record Layer(
     int Index,
     string DiffId,
     string BlobPath,
-    long CompressedSize,
+    long StoredSize,
     long Size,
     string? CreatedBy,
     IReadOnlyList<Change> Changes,
     string? BlobDigest = null,
-    LayerFacts? Facts = null);
+    LayerFacts? Facts = null,
+    bool StoredGzip = false);
 
 public enum ChangeKind { Added, Modified, Deleted }
 

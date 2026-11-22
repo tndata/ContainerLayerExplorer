@@ -76,7 +76,7 @@ function renderDetail() {
 
 function headerHtml(image, tags) {
   const { model } = image;
-  const compressed = model.layers.reduce((sum, l) => sum + l.compressedSize, 0);
+  const stored = model.layers.reduce((sum, l) => sum + l.storedSize, 0);
   const emptySteps = model.history.filter((s) => s.layerIndex === null).length;
   const platform = [model.os, model.architecture].filter(Boolean).join("/") || "not recorded";
   const tagList = (tags.length ? tags : [image.name]).map((t) => `<code class="tag">${esc(t)}</code>`).join(" ");
@@ -95,8 +95,8 @@ function headerHtml(image, tags) {
     fact("Platform", esc(platform)) +
     fact("Layers", `${model.layers.length}` +
       ` <span class="sub">(${model.history.length} build steps, ${emptySteps} without a layer)</span>`) +
-    fact("Size", `${fmtSize(model.totalSize)} of files <span class="sub">(${fmtSize(compressed)} stored, compressed)</span>`,
-      "The files in all layers added up, and the size of the layer blobs as stored. Docker's own size figure counts differently.") +
+    fact("Size", `${fmtSize(model.totalSize)} of files <span class="sub">(${fmtSize(stored)} stored, ${compressionText(model.layers)})</span>`,
+      "The files in all layers added up, and the size of the layer files in Docker's export of the image. Docker's own size figure counts differently.") +
     `</dl>`;
 }
 
@@ -130,7 +130,7 @@ function layerHtml(layer, step, prevSet) {
     `<code class="cmd">${esc(shortCmd(cmd)) || "<i>(not recorded)</i>"}</code>` +
     (isNew ? `<span class="badge new">new</span>` : "") +
     `<span class="lid"><code>${shortId(layer.diffId)}</code></span>` +
-    `<span class="sizes">${fmtSize(layer.compressedSize)} compressed<br>${fmtSize(layer.size)} of files</span>` +
+    `<span class="sizes">${fmtSize(layer.storedSize)} stored<br>${fmtSize(layer.size)} of files</span>` +
     `</div>`;
 }
 
@@ -228,14 +228,15 @@ function runtimeRevealRows(c) {
 
 /** The platform and the layers: platform, layer fingerprints and stored layers. */
 function layerRevealRows(model) {
-  const compressed = model.layers.reduce((sum, l) => sum + l.compressedSize, 0);
+  const stored = model.layers.reduce((sum, l) => sum + l.storedSize, 0);
   return [
     row("Platform", "config", "os, architecture", [model.os, model.architecture].filter(Boolean).map(esc).join("/"), "not recorded",
       "The platform the image is built for. It names the target, not the computer that built the image."),
     row("Layer fingerprints", "config", "rootfs.diff_ids", model.layers.length && `${model.layers.length} content hashes`, "no layers",
       "A hash of each layer's content. The same layer has the same fingerprint in every image that contains it."),
-    row("Stored layers", "manifest", "layers", model.layers.length && `${model.layers.length} layer blobs, ${fmtSize(compressed)}`, "no layers",
-      "What is stored, and what is sent over the network when the image is pushed or pulled. Usually gzip compressed."),
+    row("Stored layers", "export", "the layer files", model.layers.length &&
+      `${model.layers.length} layer blobs, ${fmtSize(stored)}, ${compressionText(model.layers)}`, "no layers",
+      "The layer files as Docker exported them. When they are gzip compressed, this is roughly what a push or a pull transfers. Some Docker setups export the layers uncompressed, and then the size is close to the file data."),
   ];
 }
 
@@ -259,8 +260,8 @@ function layerDetailHtml(model, index, prevSet) {
       "The hash of the layer's uncompressed content. The same layer has the same fingerprint in every image that contains it."),
     row("Blob digest", "manifest", "layers[].digest", layer.blobDigest && `<code>${esc(layer.blobDigest)}</code>`, "not recorded in this archive format",
       "The hash of the layer as stored and sent (usually gzip compressed). Registries and docker pull use this one."),
-    row("Stored size", "manifest", "layers[].size", storedSizeHtml(layer), "",
-      "What a push or pull of this layer transfers. The percentage compares it with the files' total size; tar headers make a tiny layer bigger than its files."),
+    row("Stored size", "export", "the layer file's size", storedSizeHtml(layer), "",
+      "The size of this layer's file in Docker's export of the image. When it is gzip compressed, this is roughly what a push or a pull transfers. The percentage compares it with the files' total size; tar headers make a tiny layer bigger than its files."),
     row("Size of files", "layer", "tar entries", `${fmtSize(layer.size)}`, "",
       "The files in this layer added up, uncompressed. Deleted files are only markers here: their data is in a lower layer."),
   ];
@@ -272,14 +273,21 @@ function layerDetailHtml(model, index, prevSet) {
     `<div class="reveal-rows">${rows.join("")}</div>`;
 }
 
-/** The stored (compressed) size, with how much of the file data it is when the layer has files. */
+/** The stored size and whether it is compressed, with how much of the file data it is when the layer has files. */
 function storedSizeHtml(layer) {
-  const stored = fmtSize(layer.compressedSize);
+  const stored = `${fmtSize(layer.storedSize)}, ${layer.storedGzip ? "gzip compressed" : "not compressed"}`;
   if (layer.size > 0) {
-    const ratio = `${Math.round((layer.compressedSize * 100) / layer.size)}% of the file data`;
+    const ratio = `${Math.round((layer.storedSize * 100) / layer.size)}% of the file data`;
     return `${stored} <span class="sub">(${ratio})</span>`;
   }
   return stored;
+}
+
+/** "gzip compressed", "not compressed" or "partly compressed", from what the export holds. */
+function compressionText(layers) {
+  const gzip = layers.filter((l) => l.storedGzip).length;
+  if (gzip === layers.length) return "gzip compressed";
+  return gzip === 0 ? "not compressed" : "partly compressed";
 }
 
 function layerFactRows(f) {
@@ -357,6 +365,7 @@ function octal(mode) {
 const SOURCES = {
   config: "the image config",
   manifest: "the image manifest",
+  export: "Docker's export of the image (the same as docker save)",
   layer: "the layer's file list (tar headers, not file contents)",
 };
 
