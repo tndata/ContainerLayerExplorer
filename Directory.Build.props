@@ -5,9 +5,10 @@
     <Copyright>Tore Nestenius</Copyright>
     <Product>Container Layer Explorer</Product>
 
-    <!-- Version information shared by all projects. The tool is built from source; there are no releases. -->
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <!-- Version information shared by all projects. Keep it equal to the latest git tag (vX.Y.Z).
+         Releases are source only: there are no binary downloads. -->
+    <Version>0.1.0</Version>
+    <FileVersion>0.1.0.0</FileVersion>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
   </PropertyGroup>
 </Project>
