@@ -168,7 +168,7 @@ function buildRevealRows(model) {
     row("Created", "config", "created", model.created && esc(fmtTime(model.created)), "no creation time",
       "When the image was built, as the builder recorded it. Shown as stored, with its time zone offset."),
     row("Build steps", "config", "history", steps.length && buildStepsHtml(steps), "no build history",
-      "The Dockerfile instructions as they were run, with the full text of every RUN command. Anything typed on a RUN line, such as a password, can be read here. The Dockerfile itself is not stored."),
+      "The Dockerfile instructions as they were run, with the full text of every RUN command. Anything typed on a RUN line, such as a password, can be read here. The Dockerfile itself is not in the image config."),
     row("Build times", "config", "history[].created", dates.length && buildTimesHtml(dates),
       "no build times",
       "Each build step has its own time. Steps that come from a base image are often older than the steps of the image's own Dockerfile."),
